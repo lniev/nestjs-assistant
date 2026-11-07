@@ -1,0 +1,10 @@
+# Copy this file to
+#   data/plugins/lniev__nestjs-assistant.yml
+# in a fork of https://github.com/awesome-dsh-plugin/awesome-dsh-plugin and open a PR.
+url: https://github.com/lniev/nestjs-assistant
+name: lniev/nestjs-assistant
+category: docs
+description:
+  en: 'NestJS knowledge base, enterprise development map and staged learning route for DeepSeek Harness, plus a playground that compiles and runs real NestJS projects — 31 practice modules with saved code versions and an AI coach.'
+  zh: '面向 DeepSeek Harness 的 NestJS 知识库、企业级开发地图与分阶段学习路线，并内置可真实编译运行 NestJS 工程的操练场：31 个练习模块、代码版本保存和 AI 教练。'
+icon: https://raw.githubusercontent.com/lniev/nestjs-assistant/main/docs/icon-180.png

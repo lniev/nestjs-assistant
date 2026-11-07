@@ -153,6 +153,64 @@ npm publish --access public
 | 操练场启动报缺少 `@nestjs/*` / `typescript` | 插件 `dependencies` 未安装成功（网络/镜像）。重新安装，或检查 profile 的 `node_modules` |
 | 想清空操练场运行时数据 | 删除插件目录下的 `playground/`、`playground-saves/`、`playground-state.json` |
 
+## 5.5 上架 awesome-dsh-plugin 与 GitHub Topics
+
+### GitHub Topics（自动收录，无需审核）
+
+`https://github.com/topics/dsh-plugin` 不是人工维护的名单：它自动列出所有公开仓库中**给自己打了
+`dsh-plugin` topic** 的仓库。所以只要给你的仓库加 topic 即可：
+
+仓库首页 → 右侧 **About** 齿轮 → **Topics** 填入（保存后立即出现在 topic 页）：
+
+```
+dsh-plugin  dsh  deepseek-harness  nestjs  typescript  playground  knowledge-base  ai-coach
+```
+
+也可以用 `gh`（需 `gh auth login`）：
+
+```bash
+gh repo edit lniev/nestjs-assistant \
+  --add-topic dsh-plugin --add-topic dsh --add-topic deepseek-harness \
+  --add-topic nestjs --add-topic typescript --add-topic playground
+```
+
+### awesome-dsh-plugin（人工审核，PR 收录）
+
+仓库：https://github.com/awesome-dsh-plugin/awesome-dsh-plugin ｜ 规则：[contributing.md](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)
+
+收录后插件会出现在该列表、其官网，并成为 dsh-market「发现」页的索引源，曝光最好。收录方式是
+**提一个只新增 1 个 YAML 文件的 PR**（不要手改 README，两个 README 由脚本生成）：
+
+1. Fork 上面的仓库；
+2. 在 fork 里新建 `data/plugins/lniev__nestjs-assistant.yml`，内容用本仓库的
+   [`docs/awesome-entry.yml`](docs/awesome-entry.yml)（已按官方格式写好：url / name / category /
+   en+zh 描述 / icon）；
+3. 提交并在 GitHub 上点 **Contribute → Open pull request**；
+4. PR 标题例如 `Add lniev/nestjs-assistant`，描述里简述插件做什么、如何安装
+   （`dsh plugin add github:lniev/nestjs-assistant#v1.0.1`）。
+
+收录硬性要求（CI 会自动检查，逐条已满足情况）：
+
+| 要求 | 状态 |
+| --- | --- |
+| `package.json` 声明 `dsh.bundle.patch` 且仓库根有 `cordis.patch.yml` | ✅ |
+| 真实可用代码（非占位/纯 README） | ✅ |
+| 仓库创建满 **1 天** | ⏳ 本仓库创建于 2026-11-07，**2026-11-08 16:36（北京时间）之后**提交才满足；提前开 PR 的话 CI 会先拦、满 1 天后自动重跑 |
+| 添加 `dsh-plugin` topic | ⏳ 需要在仓库 About 里加 |
+| 描述准确、无营销词、一句英文（中文可选） | ✅（见 `docs/awesome-entry.yml`） |
+| 一个 PR 最多 3 条、一个插件一个文件 | ✅（单条） |
+
+维护者还会核对描述里的数字与 API（本插件确实有 165 页文档总结、31 个练习模块、`nest_docs` 工具）。
+分类选的是 `docs`（Docs & Rendering，最贴近「知识库/文档」；若维护者认为 `tools` 更合适会直接改，不会打回）。
+
+### 市场截图与图标（已配置，无需再提 PR）
+
+- 仓库根新增 `screenshots.json`，声明 1–8 张截图，dsh-market 详情页会按顺序展示：
+  见 [`screenshots.json`](screenshots.json)（指向 `docs/screenshots/*.png`）。
+- 收录条目的 `icon:` 指向 [`docs/icon-180.png`](docs/icon-180.png)（GitHub 托管的 180×180 PNG，
+  列表不收 SVG）。想换图标时替换该文件即可，市场下次构建自动更新。
+- 想换截图：\(1\) 改 `screenshots.json` 里的路径；\(2\) 在 README「界面截图」区块里同步替换。
+
 ## 6. 安全与合规
 
 - DSH 插件以**用户本机权限**运行，Host 代码可以读写文件、启动子进程。README 与插件页面都会提示
