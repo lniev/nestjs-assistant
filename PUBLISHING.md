@@ -57,6 +57,9 @@ git push origin v1.0.1
 
 发布后建议在 GitHub Releases 里为 `v1.0.0` 写升级说明。
 
+建议同时设置 **Social preview**（仓库链接在社交/IM 里分享时显示的预览图，推荐 1280×640、<1MB）：
+仓库 **Settings → General → Social preview → Edit → Upload an image**，上传 [`docs/social-preview.png`](docs/social-preview.png)。
+
 ## 2. 用户如何安装
 
 三种方式任选其一，安装 spec（来源地址）是同一个：
