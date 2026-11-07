@@ -1,0 +1,33 @@
+{
+  "id": "sandbox",
+  "itemId": null,
+  "stageId": "sandbox",
+  "stageIndex": 0,
+  "itemIndex": 0,
+  "stageTitleZh": "自由沙盒",
+  "titleZh": "自由沙盒（原始示例）",
+  "title": "Free sandbox (starter example)",
+  "level": "L1",
+  "goal": "不绑定任何练习的自由沙盒：保留最初的内存版 Cats 示例，随便改。",
+  "practice": "自由修改、新增模块与路由，保存成你自己的代码版本。",
+  "deliverable": "任意可运行的服务",
+  "accept": "能启动并通过请求台调用",
+  "minutes": 0,
+  "pageIds": [
+    "first-steps"
+  ],
+  "summary": "初始示例工程：内存数组版 Cats 资源，含 AppModule、CatsModule、CatsController 与 CatsService，可自由改写。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/cats",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats/1",
+      "expect": 200
+    }
+  ]
+}

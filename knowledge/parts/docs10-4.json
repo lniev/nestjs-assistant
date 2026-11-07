@@ -1,0 +1,286 @@
+[
+  {
+    "id": "faq/raw-body",
+    "titleZh": "原始请求体",
+    "summary": "验证 webhook 签名时需要未解析的原始请求体来计算 HMAC。创建应用时传 rawBody: true，请求对象即实现 RawBodyRequest 接口并暴露 rawBody（Buffer）。页面分别给出 Express 与 Fastify 的写法，并说明如何用 useBodyParser() 注册额外解析器以及调整默认体积上限，前提是内置全局 body parser 未被关闭。",
+    "sections": [
+      {
+        "heading": "Express 用法",
+        "text": "NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })，控制器参数标注为 RawBodyRequest<Request> 后读 req.rawBody。默认只注册 json 与 urlencoded，其他类型用 useBodyParser 注册。"
+      },
+      {
+        "heading": "Fastify 用法",
+        "text": "创建 NestFastifyApplication 时同样传 rawBody: true，控制器用 RawBodyRequest<FastifyRequest>。Fastify 默认只注册 JSON 与表单解析器，需要 text/plain 时调用 useBodyParser。"
+      },
+      {
+        "heading": "体积上限",
+        "text": "Express 默认 100kb，可 useBodyParser('json', { limit: '10mb' }) 提升；Fastify 默认 1MiB，用 useBodyParser('application/json', { bodyLimit }) 调整。useBodyParser() 会尊重应用选项中的 rawBody。"
+      }
+    ],
+    "keyPoints": [
+      "创建应用时传 `rawBody: true`，请求对象才会带 `rawBody` 字段",
+      "`RawBodyRequest<Request>` 暴露 `rawBody: Buffer`，用于签名校验",
+      "必须保留内置 body parser，不能传 `bodyParser: false`",
+      "Express 用 `useBodyParser('text')` 注册额外解析器",
+      "Fastify 用 `useBodyParser('text/plain')`，默认只解析 JSON 与表单",
+      "Express 默认 100kb、Fastify 1MiB，可用 limit 调整"
+    ],
+    "snippets": [
+      {
+        "title": "读取原始请求体",
+        "lang": "typescript",
+        "code": "import { Controller, Post, type RawBodyRequest, Req } from '@nestjs/common';\nimport type { Request } from 'express';\n\nconst app = await NestFactory.create<NestExpressApplication>(AppModule, {\n  rawBody: true,\n});\napp.useBodyParser('json', { limit: '10mb' });\n\n@Controller('webhooks')\nexport class WebhooksController {\n  @Post('stripe')\n  handle(@Req() req: RawBodyRequest<Request>) {\n    const raw = req.rawBody; // Buffer, exactly as sent\n    return verifySignature(raw, req.headers['stripe-signature']);\n  }\n}"
+      }
+    ],
+    "api": [
+      "rawBody",
+      "RawBodyRequest",
+      "useBodyParser()",
+      "NestExpressApplication",
+      "NestFastifyApplication",
+      "bodyLimit"
+    ],
+    "pitfalls": [
+      "传了 bodyParser: false 后 rawBody 恒为 undefined，签名校验必然失败",
+      "用 express.json() 自行注册解析器会绕过 Nest 的 rawBody 处理",
+      "忘记把应用类型写成 NestExpressApplication，useBodyParser 类型不存在"
+    ],
+    "enterprise": "webhook 入口统一放在独立控制器，先以 raw body 验签再解析业务数据；把各厂商的体积上限与签名算法集中配置，并对验签失败返回 401 以便网关重试策略判断。",
+    "related": [
+      "http/webhooks",
+      "middleware",
+      "http/file-upload",
+      "faq/http-adapter"
+    ]
+  },
+  {
+    "id": "faq/hybrid-application",
+    "titleZh": "混合应用",
+    "summary": "混合应用同时监听两种以上来源：HTTP 服务加微服务监听，或多个不同传输的微服务。createMicroservice() 不支持多服务器，因此要先用 NestFactory.create() 建应用，再通过 connectMicroservice() 把多个 INestMicroservice 挂上去，最后 startAllMicroservices() 与 listen()。页面还说明启动顺序、按传输绑定 @MessagePattern 与 inheritAppConfig。",
+    "sections": [
+      {
+        "heading": "连接多个微服务",
+        "text": "每次 connectMicroservice<MicroserviceOptions>({ transport, options }) 返回一个微服务实例，可分别使用 TCP、REDIS 等传输与端口。全部连接后用 app.startAllMicroservices() 启动，再由 app.listen(3001) 启动 HTTP。"
+      },
+      {
+        "heading": "启动顺序",
+        "text": "若先 startAllMicroservices() 再 listen()，微服务会在 onModuleInit、onApplicationBootstrap 等生命周期钩子完成前就开始消费消息。处理器必须等模块初始化完毕时，应先 listen() 或 init() 再启动微服务。"
+      },
+      {
+        "heading": "按传输绑定与共享配置",
+        "text": "混用多个传输时，给 @MessagePattern() 传第二个参数（Transport 枚举值或自定义 transporter 的 transportId）即可把处理器绑定到指定传输。默认微服务不继承主应用的全局管道、守卫、拦截器与过滤器，需传 { inheritAppConfig: true }。"
+      }
+    ],
+    "keyPoints": [
+      "`createMicroservice()` 只支持单服务器，多监听要用混合应用",
+      "`app.connectMicroservice()` 可多次调用，分别连接不同 transport",
+      "`startAllMicroservices()` 启动全部微服务，`listen()` 启动 HTTP",
+      "不提供 HTTP 时用 `app.init()` 代替 `listen()`",
+      "先 `startAllMicroservices()` 会让微服务早于生命周期钩子消费消息",
+      "`@MessagePattern(payload, Transport.NATS)` 把处理器绑定到指定传输",
+      "`{ inheritAppConfig: true }` 让微服务继承全局增强器"
+    ],
+    "snippets": [
+      {
+        "title": "HTTP 加两个微服务",
+        "lang": "typescript",
+        "code": "const app = await NestFactory.create(AppModule);\n\nconst microserviceTcp = app.connectMicroservice<MicroserviceOptions>({\n  transport: Transport.TCP,\n  options: { port: 3002 },\n});\n\nconst microserviceRedis = app.connectMicroservice<MicroserviceOptions>({\n  transport: Transport.REDIS,\n  options: { host: 'localhost', port: 6379 },\n});\n\nawait app.listen(3001);\nawait app.startAllMicroservices();"
+      },
+      {
+        "title": "继承全局配置",
+        "lang": "typescript",
+        "code": "const app = await NestFactory.create(AppModule);\n\n// register global enhancers before connecting, or they will not apply\nconst microservice = app.connectMicroservice<MicroserviceOptions>(\n  {\n    transport: Transport.TCP,\n  },\n  { inheritAppConfig: true },\n);\n\nawait app.startAllMicroservices();"
+      }
+    ],
+    "api": [
+      "connectMicroservice()",
+      "startAllMicroservices()",
+      "INestMicroservice",
+      "MicroserviceOptions",
+      "Transport",
+      "inheritAppConfig",
+      "app.init()"
+    ],
+    "pitfalls": [
+      "用 createMicroservice() 启动多个服务会失败，必须用混合应用方式",
+      "先启动微服务再 listen，消息可能在模块初始化完成前被消费",
+      "inheritAppConfig 需在 connectMicroservice() 之前注册全局增强器"
+    ],
+    "enterprise": "适合从单体过渡到微服务：同一进程内保留 HTTP 管理与多个内部传输监听，按传输拆分 @MessagePattern，配合 inheritAppConfig 统一校验与日志；规模更大时再拆成独立服务。",
+    "related": [
+      "microservices/basics",
+      "microservices/custom-transport",
+      "fundamentals/lifecycle-events",
+      "faq/multiple-servers"
+    ]
+  },
+  {
+    "id": "faq/multiple-servers",
+    "titleZh": "HTTPS 与多服务器",
+    "summary": "通过 NestFactory.create() 的 httpsOptions 传入 key 与 cert 即可启动 HTTPS；Fastify 则把 https 选项交给 FastifyAdapter 构造函数。要在同一应用上同时监听 HTTP 与 HTTPS 端口，需要自己用 http.createServer() 与 https.createServer() 包住 Express 实例，并注意 Nest 不会关闭这些自建服务器，需用 OnApplicationShutdown 手动关闭。",
+    "sections": [
+      {
+        "heading": "启用 HTTPS",
+        "text": "读取私钥与证书到 httpsOptions，再传给 NestFactory.create(AppModule, { httpsOptions })。Fastify 适配器写法不同：new FastifyAdapter({ https: httpsOptions })，其余监听逻辑不变。"
+      },
+      {
+        "heading": "多端口同时监听",
+        "text": "先 const server = express()，用 new ExpressAdapter(server) 创建应用并 app.init()，再用 http.createServer(server).listen(3000) 与 https.createServer(httpsOptions, server).listen(443) 同时提供两种协议。"
+      },
+      {
+        "heading": "关闭自建服务器",
+        "text": "自己创建的 server 不受 app.close() 或终止信号管理，需要在实现 OnApplicationShutdown 的 provider 中记录并逐一 close()，否则关闭流程会留下悬挂句柄。该方案不支持 GraphQL subscriptions。"
+      }
+    ],
+    "keyPoints": [
+      "`httpsOptions` 传 key 与 cert 即可让 Nest 以 HTTPS 启动",
+      "Fastify 用 `new FastifyAdapter({ https: httpsOptions })`",
+      "多端口用 `http.createServer()` 与 `https.createServer()`",
+      "Express 实例需先交给 `ExpressAdapter` 并由 `app.init()` 初始化",
+      "自建 server 需在 `OnApplicationShutdown` 中手动关闭",
+      "该多服务器方案与 GraphQL subscriptions 不兼容"
+    ],
+    "snippets": [
+      {
+        "title": "同时监听 HTTP 与 HTTPS",
+        "lang": "typescript",
+        "code": "const httpsOptions = {\n  key: fs.readFileSync('./secrets/private-key.pem'),\n  cert: fs.readFileSync('./secrets/public-certificate.pem'),\n};\n\nconst server = express();\nconst app = await NestFactory.create(AppModule, new ExpressAdapter(server));\nawait app.init();\n\nconst httpServer = http.createServer(server).listen(3000);\nconst httpsServer = https.createServer(httpsOptions, server).listen(443);\n\nconst shutdownObserver = app.get(ShutdownObserver);\nshutdownObserver.addHttpServer(httpServer);\nshutdownObserver.addHttpServer(httpsServer);"
+      }
+    ],
+    "api": [
+      "httpsOptions",
+      "ExpressAdapter",
+      "FastifyAdapter",
+      "OnApplicationShutdown",
+      "http.createServer()",
+      "https.createServer()",
+      "app.init()"
+    ],
+    "pitfalls": [
+      "自建服务器未手动关闭，进程收到 SIGTERM 后仍会挂住",
+      "在 GraphQL subscriptions 场景使用多服务器方案会失效"
+    ],
+    "enterprise": "生产更常见的是 TLS 终止在负载均衡或 Ingress；确需应用内 HTTPS（如内网双向 TLS）时，把证书加载与服务器关闭统一封装，并纳入密钥轮换与健康检查流程。",
+    "related": [
+      "faq/http-adapter",
+      "faq/keep-alive-connections",
+      "graphql/subscriptions",
+      "deployment"
+    ]
+  },
+  {
+    "id": "faq/request-lifecycle",
+    "titleZh": "请求生命周期",
+    "summary": "这一页按执行顺序拆解 Nest 请求生命周期：中间件、守卫、拦截器（前置）、管道、控制器、服务、拦截器（后置）、异常过滤器、响应。重点说明全局、控制器、路由三级组件的执行次序，以及拦截器的后进先出、参数级管道从最后一个参数开始、过滤器从最底层开始等反直觉细节。",
+    "sections": [
+      {
+        "heading": "中间件与守卫",
+        "text": "先运行 app.use() 绑定的全局中间件，再按路径匹配运行模块中间件；跨模块时 @Global() 模块的最先，其次根模块，再按与根模块的距离排序。守卫按全局、控制器、路由顺序执行，同层按绑定顺序，例如 Guard1、Guard2、Guard3。"
+      },
+      {
+        "heading": "拦截器与管道",
+        "text": "拦截器入站顺序与守卫一致，但因返回 Observable，出站按后进先出，从路由到控制器再到全局解析；管道抛出的错误可在 catchError 中读到。管道整体先进先出，但参数级管道从最后一个参数开始处理。"
+      },
+      {
+        "heading": "异常过滤器",
+        "text": "过滤器是唯一不先解析全局的组件：先看路由级，再看控制器级，最后才是全局；异常不会在过滤器之间传递，路由级捕获后外层无法再处理，需要复用请用继承。只有未捕获异常才触发过滤器。"
+      }
+    ],
+    "keyPoints": [
+      "顺序为中间件、守卫、拦截器、管道、控制器、服务、拦截器、过滤器",
+      "全局中间件先于模块中间件，模块间按与根模块的距离排序",
+      "守卫按全局、控制器、路由执行，同层按绑定顺序",
+      "拦截器入站先进先出，出站因 Observable 而后进先出",
+      "参数级管道从最后一个参数开始，依次向前处理",
+      "过滤器从路由级开始，再到控制器、全局，且不会层层传递",
+      "中间件抛出的异常只能被全局过滤器捕获"
+    ],
+    "snippets": [
+      {
+        "title": "守卫执行顺序示例",
+        "lang": "typescript",
+        "code": "// Guard1 -> Guard2 -> Guard3\n@UseGuards(Guard1, Guard2)\n@Controller('cats')\nexport class CatsController {\n  constructor(private catsService: CatsService) {}\n\n  @UseGuards(Guard3)\n  @Get()\n  getCats(): Cats[] {\n    return this.catsService.getCats();\n  }\n}"
+      }
+    ],
+    "api": [
+      "NestMiddleware",
+      "CanActivate",
+      "NestInterceptor",
+      "PipeTransform",
+      "ExceptionFilter",
+      "ArgumentsHost",
+      "APP_GUARD"
+    ],
+    "pitfalls": [
+      "以为过滤器也从全局开始，实际路由级过滤器先执行并截断后续",
+      "在拦截器出站逻辑里假设与入站同序，实际是后进先出",
+      "用 try/catch 吞掉异常后期望异常过滤器仍被触发，实际不会"
+    ],
+    "enterprise": "排查鉴权、校验与日志顺序问题时以该生命周期为准：把横切逻辑放在正确层级（认证用守卫、转换用管道、耗时用拦截器、兜底用全局过滤器），并在架构文档中固化这一顺序。",
+    "related": [
+      "middleware",
+      "guards",
+      "interceptors",
+      "exception-filters"
+    ]
+  },
+  {
+    "id": "faq/common-errors",
+    "titleZh": "常见错误",
+    "summary": "这一页汇总 Nest 开发中最常见的报错及排查路径：依赖无法解析（provider 未注册、放在 imports、自注入、循环文件导入、按类型或接口注入、import type、monorepo 双份 @nestjs/core）、循环依赖（forwardRef）、以及 Windows 上 TypeScript 4.9 以上 watch 模式无限编译。还介绍用 NEST_DEBUG 环境变量输出依赖解析日志。",
+    "sections": [
+      {
+        "heading": "依赖解析失败",
+        "text": "报错会指出 provider 在某个 index 上缺少依赖。先打开报错模块检查 providers，确认依赖已注册或由 imports 的模块导出；常见错误是把 @Injectable() 类放进 imports、模块间重复注册 provider、或把 provider 注入自身。"
+      },
+      {
+        "heading": "无 token 的变体",
+        "text": "当依赖在运行时是 undefined 或 Object，报错不再给出 token 名，而是提示 index 处为 undefined。多因循环文件导入、按类型或接口注入（运行时不存在）、或对可注入类使用 import type。改用类引用或 @Inject(自定义 token)。"
+      },
+      {
+        "heading": "循环依赖与 watch 循环",
+        "text": "模块 imports 中出现 undefined 通常源于循环依赖，需用 forwardRef() 同时包裹模块与 provider，或把共享常量抽到独立文件。Windows 加 TS 4.9 以上 watch 会无限打印 File change detected，可设 watchFile: fixedPollingInterval。"
+      }
+    ],
+    "keyPoints": [
+      "`Nest can't resolve dependencies` 表示某个 index 的依赖不可用",
+      "provider 必须在当前模块 providers 中，或由 imports 的模块导出",
+      "把 `@Injectable()` 类放进 imports 会在启动时报错",
+      "运行时为 undefined 时多为循环文件导入、接口注入或 import type",
+      "模块循环依赖用 `forwardRef()` 包裹模块与 provider",
+      "Windows 上 watch 死循环可设 `watchFile: fixedPollingInterval`",
+      "`NEST_DEBUG` 环境变量可输出依赖解析过程日志"
+    ],
+    "snippets": [
+      {
+        "title": "用 forwardRef 打破循环依赖",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService {\n  constructor(\n    @Inject(forwardRef(() => DogsService))\n    private readonly dogsService: WrapperType<DogsService>,\n  ) {}\n}\n\n@Module({\n  imports: [forwardRef(() => DogsModule)],\n  providers: [CatsService],\n  exports: [CatsService],\n})\nexport class CatsModule {}"
+      },
+      {
+        "title": "修复 watch 无限编译",
+        "lang": "json",
+        "code": "{\n  \"compilerOptions\": {\n    \"module\": \"nodenext\",\n    \"target\": \"es2023\",\n    \"strict\": true\n  },\n  \"watchOptions\": {\n    \"watchFile\": \"fixedPollingInterval\"\n  }\n}"
+      }
+    ],
+    "api": [
+      "forwardRef()",
+      "NEST_DEBUG",
+      "watchOptions.watchFile",
+      "@Inject()",
+      "ModuleRef"
+    ],
+    "pitfalls": [
+      "把 provider 同时注册在特性模块与根模块，Nest 会实例化两次",
+      "用 import type 导入可注入类，运行时报依赖为 undefined",
+      "只对模块用 forwardRef() 而漏掉 provider，循环依赖仍未解开"
+    ],
+    "enterprise": "把依赖错误纳入启动自检：CI 中设置 NEST_DEBUG 便于定位，monorepo 统一 @nestjs/core 版本并用 pnpm 的 injected 依赖避免双份包；watch 配置写入共享 tsconfig 基线。",
+    "related": [
+      "fundamentals/circular-dependency",
+      "fundamentals/custom-providers",
+      "cli/monorepo",
+      "devtools/overview"
+    ]
+  }
+]

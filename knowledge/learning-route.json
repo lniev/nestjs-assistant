@@ -1,0 +1,120 @@
+{
+ "titleZh": "NestJS 进阶学习路线",
+ "intro": "这条路线面向想系统掌握 NestJS、并能独立承担企业后端开发的工程师：从启动链路与请求生命周期出发，经模块化、数据配置、认证授权与安全，进入测试、可观测、部署和队列、事件、可靠性、微服务等企业级主题。每项都有可提交的交付物与可自检的验收标准，用阶段勾选记录进度，卡住时让 AI 陪练或跳转原文。",
+ "totalHours": 120,
+ "tracks": [
+  { "id": "backend", "titleZh": "后端开发主线", "description": "从零到企业级的 12 周完整路径，适合转岗、系统补课或团队带新人统一口径。", "stageIds": ["s1", "s2", "s3", "s4", "s5", "s6", "s7"] },
+  { "id": "fast", "titleZh": "有 Node 基础速通", "description": "已有 Node/Express 经验者快速过基础周，深入生命周期、DI、数据与工程化，架构阶段按需补。", "stageIds": ["s1", "s2", "s3", "s4", "s5", "s6"] }
+ ],
+ "stages": [
+  {
+   "id": "s1",
+   "title": "Stage 1 · 心智模型与最小可运行",
+   "titleZh": "心智模型与最小可运行",
+   "weeks": "第 1 周",
+   "goal": "建立 Nest 心智模型：应用如何启动、请求如何流转、模块与 provider 如何组织，并交付第一个可运行 API。",
+   "hours": 10,
+   "items": [
+    { "id": "s1-1", "title": "搭起可运行项目与启动链路", "goal": "用 CLI 创建项目，读懂 main.ts 从 NestFactory.create 到 app.listen 的启动链路。", "points": ["nest new / nest generate 的目录约定", "NestFactory.create(AppModule) 与 app.listen(3000)"], "deliverable": "可运行的 /health 接口与 README 启动说明", "accept": "npm run start:dev 后访问 /health 返回 200 且为 JSON", "minutes": 90, "level": "L1", "pageIds": ["first-steps", "cli/overview"], "practice": "在操练场改 main.ts 的端口与全局前缀，再用请求台验证 /api/health。" },
+    { "id": "s1-2", "title": "控制器与 REST 路由", "goal": "用 @Controller 与 @Get/@Post 组织资源路由，掌握 @Param/@Query/@Body 取值与状态码控制。", "points": ["路由前缀、通配符与冲突时的匹配顺序", "用 @HttpCode、@Header 控制状态码与响应头"], "deliverable": "Cats 资源 5 个 CRUD 路由（内存数组版）", "accept": "用 curl 完成增删改查，状态码与返回数据符合预期", "minutes": 150, "level": "L1", "pageIds": ["controllers"], "practice": "在操练场分别用 @Param 版与 @Query 版实现 GET /cats/:id，对比参数绑定差异。" },
+    { "id": "s1-3", "title": "Provider 与依赖注入", "goal": "把业务逻辑抽到 @Injectable 服务，理解构造函数注入、providers 注册与 exports 可见性。", "points": ["@Injectable 与 providers 注册三步", "构造函数注入与自定义令牌注入的差异"], "deliverable": "CatsService 接管 CRUD，控制器只处理参数与响应", "accept": "替换 service 实现时控制器零改动，测试可注入 mock", "minutes": 120, "level": "L1", "pageIds": ["providers"], "practice": "在操练场把内存实现换成 useClass 实现，观察 controller 是否需要改动。" },
+    { "id": "s1-4", "title": "模块边界与共享模块", "goal": "用 @Module 划分 feature 与 shared 模块，理清 imports/exports 可见性，避免全部塞进全局模块。", "points": ["feature 模块只导出对外契约", "@Global 的便利与长期耦合代价"], "deliverable": "CatsModule 与 exports 一个服务的 LoggerModule", "accept": "AppModule 只导入两个模块即可启动，未导出服务注入报错", "minutes": 120, "level": "L1", "pageIds": ["modules"], "practice": "在操练场拆出 CatsModule，故意注入未导出的 service，读报错再修复。" },
+    { "id": "s1-5", "title": "请求生命周期与中间件", "goal": "按 middleware→guards→interceptors→pipes 顺序画出请求生命周期，并用中间件打上请求 ID。", "points": ["全局、控制器、路由级组件的执行顺序", "类中间件与函数式中间件的适用场景"], "deliverable": "requestId 中间件与一张请求生命周期时序图", "accept": "同一次请求的日志与异常响应都带同一个 requestId", "minutes": 120, "level": "L1", "pageIds": ["faq/request-lifecycle", "middleware"], "practice": "在操练场加 X-Request-Id 中间件，再用拦截器写进响应头。" }
+   ]
+  },
+  {
+   "id": "s2",
+   "title": "Stage 2 · 请求生命周期组件",
+   "titleZh": "请求生命周期组件",
+   "weeks": "第 2-3 周",
+   "goal": "把校验、鉴权、响应包装、错误处理与请求上下文从控制器抽成全局组件，形成可复用的横切层。",
+   "hours": 16,
+   "items": [
+    { "id": "s2-1", "title": "管道与 DTO 校验", "goal": "用 DTO + class-validator + 全局 ValidationPipe 校验入参并转换类型，让非法请求进不了控制器。", "points": ["whitelist、forbidNonWhitelisted 与 transform", "自定义 Pipe 与 @UsePipes 的绑定层级"], "deliverable": "CreateCatDto、全局 ValidationPipe 与参数级管道", "accept": "缺字段返回 400 且错误清晰，多传字段被剥离或拒绝", "minutes": 180, "level": "L2", "pageIds": ["pipes", "application/validation"], "practice": "在操练场提交缺少 name 的请求，对比 whitelist 开关时的响应。" },
+    { "id": "s2-2", "title": "守卫与访问控制", "goal": "用 CanActivate 与 @SetMetadata/@Reflector 做角色校验，理解守卫先于管道、只负责放行或拒绝。", "points": ["Reflector 读取 @Roles 元数据", "全局守卫配合 @Public 放行白名单"], "deliverable": "RolesGuard 与 @Roles('admin') 保护的删除接口", "accept": "无 token 返回 401，角色不足返回 403，管理员可删除", "minutes": 180, "level": "L2", "pageIds": ["guards", "security/authorization"], "practice": "在操练场给 DELETE /cats/:id 加 RolesGuard，用三种身份对比 401/403。" },
+    { "id": "s2-3", "title": "拦截器与统一响应", "goal": "用 NestInterceptor 包装响应、记录耗时，并用 RxJS 的 map/tap/catchError 处理返回流。", "points": ["CallHandler 与拦截器的洋葱模型", "全局拦截器注册与执行顺序的影响"], "deliverable": "统一响应 { code, data, traceId } 的拦截器与耗时日志", "accept": "所有接口响应结构一致，慢请求日志含方法、路径与毫秒数", "minutes": 180, "level": "L2", "pageIds": ["interceptors", "application/serialization"], "practice": "在操练场写 TransformInterceptor，把返回值包进 data 并补上耗时。" },
+    { "id": "s2-4", "title": "异常过滤器与错误契约", "goal": "用 @Catch 捕获 HttpException 与未知异常，输出稳定错误码，避免堆栈和 SQL 泄漏给客户端。", "points": ["ArgumentsHost 取 request 与 response", "业务异常继承 HttpException 的写法"], "deliverable": "全局异常过滤器、错误码表与 404/500 用例", "accept": "未知异常返回 500 且日志保留堆栈，响应不含内部路径", "minutes": 180, "level": "L2", "pageIds": ["exception-filters"], "practice": "在操练场故意抛 new Error，对比默认 500 与自定义过滤器的输出。" },
+    { "id": "s2-5", "title": "自定义装饰器与执行上下文", "goal": "用 createParamDecorator 与 ExecutionContext 封装 @CurrentUser、@RequestId，让参数表达业务语义。", "points": ["createParamDecorator 的 data 参数透传", "ExecutionContext 在 HTTP、RPC、WS 间切换"], "deliverable": "可复用的 @CurrentUser 与 @RequestId 装饰器", "accept": "控制器直接拿到用户与请求 ID，不再注入整个 @Req()", "minutes": 240, "level": "L2", "pageIds": ["custom-decorators", "fundamentals/execution-context"], "practice": "在操练场用 @CurrentUser() 替代 @Req()，并支持只取某个字段。" }
+   ]
+  },
+  {
+   "id": "s3",
+   "title": "Stage 3 · 模块化与依赖注入进阶",
+   "titleZh": "模块化与依赖注入进阶",
+   "weeks": "第 3-4 周",
+   "goal": "掌握 provider 的多种注册方式、动态模块、作用域与生命周期，让基础设施模块可配置、可替换。",
+   "hours": 16,
+   "items": [
+    { "id": "s3-1", "title": "自定义 Provider 与注入令牌", "goal": "掌握 useClass/useValue/useFactory/useExisting 与字符串、Symbol、抽象类令牌，按环境替换实现。", "points": ["工厂 provider 的 inject 依赖数组", "用抽象类令牌解耦第三方 SDK 与实现"], "deliverable": "PaymentProvider 接口与沙箱、生产两套实现", "accept": "切换 NODE_ENV 即可换实现，业务代码零改动", "minutes": 240, "level": "L3", "pageIds": ["fundamentals/custom-providers", "fundamentals/async-providers"], "practice": "在操练场用 useFactory 注入 ConfigService，返回带超时的 HTTP 客户端。" },
+    { "id": "s3-2", "title": "动态模块与异步配置", "goal": "写 forRoot/forRootAsync 动态模块，让基础设施模块能被不同业务模块按需配置并复用。", "points": ["DynamicModule 返回 module/imports/providers/exports", "ConfigurableModuleBuilder 生成配置 API"], "deliverable": "StorageModule.forRootAsync 与两个不同配置使用方", "accept": "两个模块以不同 bucket 导入，实例配置互不串", "minutes": 240, "level": "L3", "pageIds": ["fundamentals/dynamic-modules", "application/configuration"], "practice": "在操练场把硬编码 API key 改成 forRootAsync 读取 ConfigService。" },
+    { "id": "s3-3", "title": "作用域与请求上下文", "goal": "理解 DEFAULT/REQUEST/TRANSIENT 的生命周期与性能代价，用 AsyncLocalStorage 传递请求上下文。", "points": ["请求作用域会沿注入链向上冒泡传播", "ALS 比 REQUEST scope 更轻量的原因"], "deliverable": "基于 AsyncLocalStorage 的请求上下文服务与审计字段", "accept": "并发请求各自拿到正确 userId，实例数不随请求增长", "minutes": 240, "level": "L3", "pageIds": ["fundamentals/injection-scopes", "recipes/async-local-storage"], "practice": "在操练场用 ALS 存 traceId，在 service 深处读取而不传参。" },
+    { "id": "s3-4", "title": "循环依赖与生命周期", "goal": "识别循环依赖并选择 forwardRef、ModuleRef 或事件解耦；用生命周期钩子做预热与优雅关闭。", "points": ["forwardRef 只在无法拆分时使用", "enableShutdownHooks 与 OnApplicationShutdown"], "deliverable": "解耦后的模块依赖图、启动预热与关闭日志", "accept": "启动打印预热完成，SIGTERM 后连接与队列正常关闭", "minutes": 240, "level": "L3", "pageIds": ["fundamentals/circular-dependency", "fundamentals/lifecycle-events", "fundamentals/module-ref"], "practice": "在操练场构造 A 与 B 循环依赖，分别用 forwardRef 与 ModuleRef 解决。" }
+   ]
+  },
+  {
+   "id": "s4",
+   "title": "Stage 4 · 数据、配置与缓存",
+   "titleZh": "数据、配置与缓存",
+   "weeks": "第 5-6 周",
+   "goal": "接入数据库与配置体系，处理事务、关联、分页与缓存，让接口在数据量增长后仍正确且不慢。",
+   "hours": 20,
+   "items": [
+    { "id": "s4-1", "title": "ORM 接入与数据建模", "goal": "用 TypeORM 或 Prisma 接入数据库，建立实体、仓储层与迁移，隔离控制器与持久化细节。", "points": ["forRootAsync 读取连接配置", "迁移纳入版本控制，生产禁用 synchronize"], "deliverable": "User/Order 实体、Repository 与初始迁移脚本", "accept": "空库执行迁移后可 CRUD，重启应用数据不丢", "minutes": 300, "level": "L3", "pageIds": ["data/overview", "data/typeorm", "data/prisma"], "practice": "在操练场把内存仓储换成 ORM 仓储，保持 service 方法签名不变。" },
+    { "id": "s4-2", "title": "事务、关联与查询性能", "goal": "掌握事务边界、关联加载与分页，识别并消除 N+1 查询，保证多表并发写入的原子性与一致性。", "points": ["QueryRunner 事务内复用同一个 manager", "分页与关联查询避免逐行发起查询"], "deliverable": "下单事务（扣库存+写订单）与带总数的分页列表", "accept": "并发下单库存不为负，列表 SQL 条数固定且返回总数", "minutes": 300, "level": "L3", "pageIds": ["data/typeorm", "http/performance"], "practice": "在操练场打开查询日志，对比修复前后列表请求的 SQL 条数。" },
+    { "id": "s4-3", "title": "配置与环境治理", "goal": "用 @nestjs/config 做多环境配置、命名空间与启动校验，密钥只从环境变量注入。", "points": ["ConfigModule.forRoot({ isGlobal, validate })", "registerAs 命名空间与 getOrThrow 读取"], "deliverable": ".env.example、配置校验 schema 与启动失败用例", "accept": "缺少 DATABASE_URL 时启动立即失败并指出变量名", "minutes": 300, "level": "L3", "pageIds": ["application/configuration", "deployment"], "practice": "在操练场删掉 .env 必填项，确认启动阶段就报错而非首请求崩溃。" },
+    { "id": "s4-4", "title": "缓存与读性能", "goal": "用 CacheModule 与 CacheInterceptor 缓存热点读接口，设计 TTL 与失效策略，理解一致性代价。", "points": ["CacheInterceptor 默认只缓存 GET", "@CacheKey 与 @CacheTTL 覆盖默认策略"], "deliverable": "商品详情缓存与更新后的主动失效", "accept": "二次请求命中缓存，更新后返回新值且旧缓存被清除", "minutes": 300, "level": "L3", "pageIds": ["data/caching", "http/performance"], "practice": "在操练场给 GET /products/:id 加 CacheInterceptor，比较两次耗时。" }
+   ]
+  },
+  {
+   "id": "s5",
+   "title": "Stage 5 · 认证授权与安全",
+   "titleZh": "认证授权与安全",
+   "weeks": "第 7-8 周",
+   "goal": "实现认证授权全链路，并把密码学、CORS/CSRF/Helmet、限流等安全基线固化成配置与测试。",
+   "hours": 16,
+   "items": [
+    { "id": "s5-1", "title": "认证：会话与令牌", "goal": "实现注册、登录、刷新令牌与会话校验，理解服务端 session 与 bearer token 的取舍。", "points": ["密码慢哈希与登录失败次数限流策略", "access/refresh token 轮换与吊销"], "deliverable": "注册、登录、刷新接口与受保护的 /me", "accept": "错误密码返回 401，刷新令牌只能用一次，登出后旧令牌失效", "minutes": 300, "level": "L3", "pageIds": ["security/authentication", "http/session"], "practice": "在操练场走通登录、访问 /me、刷新令牌、旧 token 失效的链路。" },
+    { "id": "s5-2", "title": "授权：策略与 RBAC", "goal": "用策略对象或守卫表达谁能对哪条记录做什么，区分 401 与 403，并把检查写进测试。", "points": ["资源级检查在 service 内二次校验", "默认拒绝，公开路由必须显式标记"], "deliverable": "订单资源的 owner、staff、admin 三级访问策略", "accept": "越权访问他人订单返回 403，未登录返回 401，策略有单测", "minutes": 240, "level": "L3", "pageIds": ["security/authorization", "fundamentals/execution-context"], "practice": "在操练场用两个用户互访订单，验证返回 403 而非带信息的 404。" },
+    { "id": "s5-3", "title": "密码学与密钥管理", "goal": "正确使用慢哈希与对称加密：密码用 bcrypt/argon2，敏感字段用 AES-GCM，密钥走 KMS。", "points": ["不自行实现加密算法与随机数生成", "密钥轮换后仍能解密历史密文的兼容读取"], "deliverable": "密码哈希服务与敏感字段加解密的仓储装饰", "accept": "数据库看不到明文密码或手机号，单测覆盖加解密往返", "minutes": 240, "level": "L3", "pageIds": ["security/encryption-and-hashing"], "practice": "在操练场把用户手机号加密入库，再在返回 DTO 时做脱敏展示。" },
+    { "id": "s5-4", "title": "Web 安全边界与限流", "goal": "配置 Helmet、CORS 白名单、CSRF 防护与 Throttler 限流，把安全基线固化成配置与用例。", "points": ["CORS 白名单与凭证模式的组合限制", "ThrottlerGuard 按路由或用户维度限流"], "deliverable": "安全中间件配置、登录限流与一页安全自查清单", "accept": "非白名单 Origin 被拒，第 6 次登录返回 429，响应带安全头", "minutes": 180, "level": "L3", "pageIds": ["security/helmet", "security/cors", "security/rate-limiting"], "practice": "在操练场设置 CORS 白名单与登录限流，用请求台模拟跨域和刷登录。" }
+   ]
+  },
+  {
+   "id": "s6",
+   "title": "Stage 6 · 工程化与可交付",
+   "titleZh": "工程化与可交付",
+   "weeks": "第 9-10 周",
+   "goal": "用测试、结构化日志、OpenAPI、健康检查与容器化，把项目变成可交付、可回归、可上线的工程。",
+   "hours": 20,
+   "items": [
+    { "id": "s6-1", "title": "单元测试与测试模块", "goal": "用 @nestjs/testing 的 Test.createTestingModule 写单测，用 mock 隔离数据库与外部服务。", "points": ["get/resolve 与 overrideProvider", "useMocker 自动 mock 缺失依赖"], "deliverable": "核心 service 单测套件与覆盖率报告（≥70%）", "accept": "npm test 全绿，mock 掉数据库后单测在 5 秒内跑完", "minutes": 300, "level": "L3", "pageIds": ["fundamentals/testing"], "practice": "在操练场为 CatsService 写单测，用 overrideProvider 替换 Repository。" },
+    { "id": "s6-2", "title": "e2e 测试与回归套件", "goal": "用 createNestApplication 配合 Supertest 覆盖登录、鉴权、下单主链路，形成回归套件。", "points": ["测试库独立，每个用例后清理数据", "覆盖 401/403/422 边界而非只测 happy path"], "deliverable": "覆盖 3 条关键链路的 e2e 套件与 CI 命令", "accept": "npm run test:e2e 全绿，故意改坏校验时套件会失败", "minutes": 300, "level": "L3", "pageIds": ["fundamentals/testing", "application/validation"], "practice": "在操练场写一条登录失败 e2e，断言 401 与错误码字段。" },
+    { "id": "s6-3", "title": "结构化日志与可观测性", "goal": "用 Nest Logger 或自定义 LoggerService 输出 JSON 日志，串联 traceId 并接入指标与追踪。", "points": ["日志级别、字段规范与敏感信息脱敏", "OpenTelemetry 与 APM 的接入位置"], "deliverable": "JSON 日志、traceId 串联与慢请求追踪样例", "accept": "按 traceId 能查到同一次请求的全部日志，且不含密码 token", "minutes": 300, "level": "L3", "pageIds": ["application/logger", "observability/overview", "observability/opentelemetry"], "practice": "在操练场把默认日志换成 JSON Logger，并注入 traceId 字段。" },
+    { "id": "s6-4", "title": "文档、版本化与上线", "goal": "用 @nestjs/swagger 生成 OpenAPI，按 URI 或 Header 版本化，用健康检查与容器化上线。", "points": ["SwaggerModule 与 DTO 装饰器保持同步", "liveness 与 readiness 探针分别检查什么"], "deliverable": "Swagger UI、/health 探针、Dockerfile 与部署说明", "accept": "容器启动后 /docs 可访问、/health 反映依赖、旧版本路由可用", "minutes": 300, "level": "L4", "pageIds": ["openapi/introduction", "reliability/terminus", "deployment"], "practice": "在操练场生成 Swagger 文档，给 DTO 加 @ApiProperty 后检查 schema。" }
+   ]
+  },
+  {
+   "id": "s7",
+   "title": "Stage 7 · 企业级架构与可靠性",
+   "titleZh": "企业级架构与可靠性",
+   "weeks": "第 11-12 周",
+   "goal": "在异步任务、事件、可靠性模式与微服务拆分中做取舍，能演示故障注入后的降级与最终一致。",
+   "hours": 22,
+   "items": [
+    { "id": "s7-1", "title": "队列、异步任务与调度", "goal": "用 BullMQ 把耗时任务移出请求链路，配置重试、退避与失败队列，用锁保证定时任务单实例。", "points": ["生产者与消费者分离，消费逻辑幂等", "失败重试、backoff 与死信告警"], "deliverable": "报表队列、定时对账任务与失败重试配置", "accept": "接口 P95 不因报表变慢，消费者重启后任务不重复执行", "minutes": 360, "level": "L4", "pageIds": ["application/queues", "application/task-scheduling", "reliability/locks"], "practice": "在操练场创建 report 队列，注入失败任务，观察 attempts 与 backoff。" },
+    { "id": "s7-2", "title": "事件驱动与 CQRS", "goal": "用事件解耦模块副作用，在复杂写模型上引入 CommandBus 与 QueryBus，明确最终一致边界。", "points": ["@OnEvent 与 EventBus 的同步异步语义", "命令处理器只做一件事，查询不写库"], "deliverable": "下单事件（扣积分、发通知）与独立查询模型", "accept": "通知失败不影响下单成功，事件处理器有独立单测", "minutes": 300, "level": "L4", "pageIds": ["application/events", "recipes/cqrs"], "practice": "在操练场把“下单发邮件”改成事件监听，对比接口耗时与失败影响。" },
+    { "id": "s7-3", "title": "超时、重试、熔断与幂等", "goal": "为外部依赖设置超时、重试、熔断与降级，用 Idempotency-Key 保证支付类写操作可安全重试。", "points": ["只对幂等操作重试，避免放大故障", "熔断从打开到半开的状态流转机制"], "deliverable": "支付幂等键、物流查询熔断降级与故障演练记录", "accept": "下游超时返回 504 或降级值，重复支付请求只扣一次款", "minutes": 360, "level": "L4", "pageIds": ["reliability/resilience", "reliability/idempotency"], "practice": "在操练场模拟下游 3 秒延迟，验证超时、熔断打开与降级返回值。" },
+    { "id": "s7-4", "title": "微服务拆分与消息一致性", "goal": "按业务能力拆分服务，用 request-response 与 event 两种通信，用 outbox 保证消息不丢。", "points": ["传输器选型（TCP/Kafka/NATS）与消息契约", "事务性 outbox 配合消费端幂等去重"], "deliverable": "订单与通知两个服务、outbox 投递与死信处理", "accept": "下单后通知最终送达，数据库回滚时消息不发出，重启不丢", "minutes": 300, "level": "L4", "pageIds": ["microservices/basics", "reliability/outbox", "microservices/kafka"], "practice": "在操练场启动两个服务，用 ClientProxy.send 与 emit 对比两种模式。" }
+   ]
+  }
+ ],
+ "checkpoints": [
+  { "title": "第一个可运行服务", "description": "能独立用 CLI 建项目并交付带校验的 CRUD 接口；能对着时序图讲清一次请求依次经过哪些组件、各自能做什么。" },
+  { "title": "横切能力落地", "description": "统一响应、错误码、鉴权、参数校验与请求 ID 全部由全局组件承担，控制器里没有重复的 try/catch 与手工判权。" },
+  { "title": "基础设施可复用", "description": "基础设施模块支持 forRootAsync 并能在两个业务模块中配置不同实例；配置缺失时启动即失败，作用域选择有明确理由。" },
+  { "title": "数据层可验收", "description": "迁移可在空库重放，下单事务在并发下不超卖，列表接口无 N+1，缓存命中与失效都能用日志或测试证明。" },
+  { "title": "安全基线通过", "description": "认证、授权、密码哈希、敏感字段加密、CORS/CSRF/Helmet 与限流均有配置和用例；越权与暴力破解被正确拦截。" },
+  { "title": "工程可交付上线", "description": "单测与 e2e 全绿，Swagger 与实际接口一致，镜像可一键启动，/health 能区分存活与就绪并反映依赖状态。" },
+  { "title": "企业级架构演练", "description": "能演示队列重试、事件解耦、熔断降级、幂等支付与 outbox 投递；说清每一步的一致性边界与故障恢复手段。" }
+ ]
+}

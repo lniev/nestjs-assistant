@@ -1,0 +1,374 @@
+[
+  {
+    "id": "observability/production-rules",
+    "titleZh": "生产规则",
+    "summary": "生产规则用一句话声明一次请求或任务可以做什么，例如最多查几次数据库、调用几次模型，Observe 会对每条保留的 trace 逐条校验。它针对那些不抛错的缺陷：重试重复扣款、关系加载造成 N+1、agent 循环调用模型四十次——请求都返回 200，测试全绿，直到账单、延迟或客户暴露问题。规则复用 SDK 已记录的 span，无需新增埋点。",
+    "sections": [
+      {
+        "heading": "规则的价值",
+        "text": "规则把“生产必须持续保持什么”写成一句话，例如“结账只向支付服务商扣款一次”“商品列表最多执行 3 条查询”“每个请求最多 5 次 LLM 调用”。规则在 trace 到达时校验，违反的 trace 与所属发布立即可见；当改动由编码 agent 完成时，一条规则是最便宜的评审，每次部署自动检查而无需重读 diff。"
+      },
+      {
+        "heading": "规则的组成",
+        "text": "规则由三部分构成：操作（一条路由加方法、某个任务名，或全部请求/任务）、计数对象（对某类或方法的调用、对某主机的出站 HTTP、LLM 调用）与边界（恰好、至多、至少 N 次）。上界对失败执行也生效，下界只对成功执行生效；只有 SDK 自己记录的 span 被计数，手工 span 不计入，折叠的 span 按真实次数计。"
+      },
+      {
+        "heading": "编写与校验",
+        "text": "可在 Activity → Rules 从零编写，也可用 Releases 页的 Pin as a rule 或瀑布图中的 Guard with a rule 基于遥测快速起草。规则只校验保存之后保留的 trace，从不回溯历史，编辑与开关约 30 秒生效；状态分为 Violated、Holding、Unchecked 与 Disabled，规则页可看每个发布何时开始与停止违反。"
+      },
+      {
+        "heading": "告警与 agent 支持",
+        "text": "创建规则时打开 Alert me when this rule breaks，会生成一条告警：一小时窗口内违反数大于 0、严重度 High、应用内与邮件通知，首次违反触发、最后一次违反一小时后恢复。付费方案最多 25 条规则。MCP 提供 create_production_rule 与 list_rule_violations，编辑与删除仍留在仪表盘。"
+      }
+    ],
+    "keyPoints": [
+      "生产规则声明一次请求或任务允许做什么，并对每条保留 trace 校验。",
+      "规则读取 SDK 已记录的 span，无需新增埋点；只统计 SDK 自己记录的 span。",
+      "上界（恰好/至多）对失败执行也生效，下界（至少）只对成功执行生效。",
+      "规则状态为 Violated、Holding、Unchecked 或 Disabled，Unchecked 表示还没有 trace。",
+      "规则使用折叠 span 的真实调用次数，N+1 的 50 次查询按 50 计。",
+      "保存后立即对后续 trace 生效，编辑与开关约 30 秒内生效，不回溯历史。",
+      "MCP 的 create_production_rule 可在发布后钉住行为，list_rule_violations 读取报告。"
+    ],
+    "snippets": [],
+    "api": [
+      "create_production_rule",
+      "list_rule_violations",
+      "spanCollapse",
+      "Production rule violations"
+    ],
+    "pitfalls": [
+      "规则只校验保存之后保留的 trace，不会回溯历史数据，别指望它立即给出全量违规。",
+      "规则持有只是证据不是证明：采样会让被检查的 trace 偏向慢与失败。",
+      "只有 SDK 记录的 span 参与计数，自己用 TracerService 开的 span 不会被规则计入。"
+    ],
+    "enterprise": "在发布评审或 agent 生成改动后，把关键不变量（只扣款一次、审计必写、列表查询上限）写成生产规则；从 Releases 页依据新出现的调用一键起草，并把违反告警接入现有 on-call 通道，让架构约束持续可验证。",
+    "related": [
+      "observability/dashboard",
+      "observability/mcp-server",
+      "observability/sdk"
+    ]
+  },
+  {
+    "id": "observability/mcp-server",
+    "titleZh": "MCP 服务器",
+    "summary": "NestJS Observe 提供 MCP 服务器，让兼容 MCP 的客户端（Claude Code、Claude Desktop、Cursor、VS Code 或自研 agent）直接查询项目数据，而无需人工把仪表盘内容复制进提示词。可查回归与发布变化、慢操作、错误组、trace、任务、告警与生产规则，数据范围与用户权限一致。其中 get_context_pack 用于编辑前，get_release_verdict 用于部署后。",
+    "sections": [
+      {
+        "heading": "连接方式",
+        "text": "端点为 POST https://observe-api.nestjs.com/mcp，走 Streamable HTTP 且无状态，无需建立会话。支持 MCP OAuth 的客户端只需提供 URL，首次调用会引导浏览器授权并创建以客户端命名的个人 token；无法打开浏览器的 CI、脚本或自研 agent 可在仪表盘 MCP tokens 创建 omcp_ 令牌，通过 Authorization: Bearer 头传入。"
+      },
+      {
+        "heading": "核心调查工具",
+        "text": "先调用 list_projects 解析 projectId，再按调查路径调用：find_regressions 找回归发布，get_operation_details 看路由，get_trace 展开瀑布，get_trace_logs 取日志。错误与任务走 list_error_groups → get_error_details → get_trace 与 list_jobs → get_job_details → get_trace。多数工具接受必需 projectId 与可选 applicationId、timeInterval。"
+      },
+      {
+        "heading": "编辑前与部署后",
+        "text": "编辑前 get_context_pack 返回约 2500 token 的项目简报（热路径、不稳依赖、SLO 与生产规则），get_method_impact 说明某方法调用的权重。部署后 get_release_verdict 说明发布改变了什么、是否回归；verify_fix 判断修复是否在该发布的请求上生效；create_production_rule 钉住改动后必须保持的行为。"
+      },
+      {
+        "heading": "写入工具与限制",
+        "text": "写入工具仅限服务设置：list_applications、create_project、create_application、create_api_key、resolve_issue 与 create_production_rule。它们与仪表盘按钮走同一服务，项目角色与方案限制一致。MCP 不能删除、改名或吊销任何东西，告警规则、错误组状态与已有生产规则的修改都留在仪表盘。"
+      }
+    ],
+    "keyPoints": [
+      "端点为 POST https://observe-api.nestjs.com/mcp，Streamable HTTP 且无状态。",
+      "支持 OAuth 的客户端（Claude Code、Cursor、VS Code）可通过浏览器授权自动获得 token。",
+      "个人 MCP token 以 omcp_ 开头，仅创建时显示一次，行为与权限等同于创建者。",
+      "诊断工具几乎都接受必需 projectId、可选 applicationId 与 timeInterval 回溯窗口。",
+      "get_context_pack 供编辑前加载，get_release_verdict 与 verify_fix 用于部署后判断。",
+      "写入工具可创建项目、应用、API key、解决 issue 与创建生产规则，不能删除或吊销。",
+      "工具结果省略按时间分桶的图表序列，只保留摘要以节省 agent 上下文。"
+    ],
+    "snippets": [
+      {
+        "title": "Claude Code 添加 MCP",
+        "lang": "bash",
+        "code": "$ claude mcp add observe \\\n  --transport http \\\n  https://observe-api.nestjs.com/mcp\n\n# 在 Claude Code 内运行 /mcp，选择 observe 并完成浏览器授权"
+      },
+      {
+        "title": "Cursor 配置 MCP 服务",
+        "lang": "json",
+        "code": "{\n  \"mcpServers\": {\n    \"observe\": {\n      \"url\": \"https://observe-api.nestjs.com/mcp\",\n      \"headers\": {\n        \"Authorization\": \"Bearer omcp_your_token\"\n      }\n    }\n  }\n}"
+      }
+    ],
+    "api": [
+      "MCP",
+      "Streamable HTTP",
+      "list_projects",
+      "get_context_pack",
+      "get_release_verdict",
+      "verify_fix",
+      "create_production_rule",
+      "get_trace"
+    ],
+    "pitfalls": [
+      "每个 MCP 请求都必须是 POST；收到 405 通常是客户端发了 GET 或 DELETE。",
+      "token 在创建时只显示一次且没有刷新流程，丢失只能吊销后重新创建。",
+      "token 继承创建者的全部项目权限，泄漏风险等同账号，应及时在 MCP tokens 页面吊销。"
+    ],
+    "enterprise": "把 MCP 接入编码 agent 的仓库级配置，约定编辑前读 get_context_pack、部署后读 get_release_verdict 与 verify_fix；CI 或自研 agent 使用专用 token 并设置过期，避免个人凭据扩散。",
+    "related": [
+      "observability/dashboard",
+      "observability/production-rules",
+      "observability/error-monitoring"
+    ]
+  },
+  {
+    "id": "observability/opentelemetry",
+    "titleZh": "OpenTelemetry",
+    "summary": "OpenTelemetry 是跨语言的追踪、指标与日志标准，一次插桩即可发往任意兼容后端（Jaeger、Grafana Tempo 或各类 OTLP 厂商）。本页说明 NestJS Observe 与 OpenTelemetry 的关系：Observe 可独立使用，也可与现有 OpenTelemetry 并行，让 Nest 服务加入其他语言服务共享的 W3C trace，并可通过 OTLP 把 span 导出到自己的后端；同时给出在 Nest 应用中零代码接入 OpenTelemetry 的方法。",
+    "sections": [
+      {
+        "heading": "两者插桩差异",
+        "text": "OpenTelemetry 从外部对 Node 应用打补丁，只看到 HTTP 服务器、路由与数据库驱动，无法看到 Nest 在中间构建的结构；Observe 通过 NestFactory.create() 的 instrument 选项从框架内部拿到每个 provider，方法调用按你命名的方式成为 span 并计算 self time。OpenTelemetry 的 Nest 插桩目前支持 @nestjs/core 12 以下，在 NestJS 12 上不产生 Nest span。"
+      },
+      {
+        "heading": "与 Observe 并行运行",
+        "text": "打开 ObserveModule.forRoot() 的 openTelemetry 选项后，到达时带 traceparent 的请求会沿用该 trace id，x-request-id 仅在指向同一 trace 时保留；出站调用同时发送 traceparent 与 x-request-id，并传递 tracestate 与采样决定。进程内的 OpenTelemetry SDK 决定 trace，Observe 按 SDK 打开的 span 所属 trace 上报，队列任务与微服务消息也保持同一 trace。"
+      },
+      {
+        "heading": "OTLP 导出 span",
+        "text": "自 @nestjs/observe 0.3.23 起，开启 openTelemetry 并配置 otlp.endpoint，可把 Observe 记录的 span 通过 OTLP/HTTP 导出到 OpenTelemetry Collector、Jaeger 或 Tempo。每个请求成为 server span、任务成为 consumer span、控制器与 provider 成为 internal span、查询与出站调用成为 client span；默认 http/protobuf 编码，不支持 gRPC。"
+      },
+      {
+        "heading": "零代码接入 OTel",
+        "text": "安装 @opentelemetry/api 与 @opentelemetry/auto-instrumentations-node，必须在 node 命令行预加载：CommonJS 用 --require，ESM 还需 --experimental-loader 与 --import。不能放进 main.ts，否则 Nest 与被打补丁的库可能已加载。需要自定义 exporter/sampler 时，自建 instrumentation 文件使用 NodeSDK，并在应用关闭后调用 otelSdk.shutdown() 发送最后一批。"
+      }
+    ],
+    "keyPoints": [
+      "Observe 从框架内部插桩，OpenTelemetry 从外部补丁，前者能看到 provider 级 span。",
+      "openTelemetry: true 让 Observe 读取入站 traceparent 并在出站调用同时发送 W3C 头。",
+      "otlp.endpoint 把 Observe 的 span 导出到 OTel 后端，默认 http/protobuf 编码。",
+      "OTLP 导出与上报 Observe 并行而非替代，所有方案都包含该导出能力。",
+      "零代码插桩必须通过 node --require/--import 预加载，不能写在 main.ts 中。",
+      "OpenTelemetry 的 Nest 插桩只覆盖应用创建、请求上下文与 handler 三类 span。",
+      "Observe 不接收 OTLP，OpenTelemetry SDK 的 span 不会出现在 Observe 中。"
+    ],
+    "snippets": [
+      {
+        "title": "并行运行并导出 OTLP",
+        "lang": "typescript",
+        "code": "ObserveModule.forRoot({\n  // ...\n  openTelemetry: true,\n  otlp: {\n    endpoint: 'http://localhost:4318',\n  },\n});"
+      },
+      {
+        "title": "零代码加载 OpenTelemetry",
+        "lang": "bash",
+        "code": "$ npm i --save @opentelemetry/api @opentelemetry/auto-instrumentations-node\n\n# CommonJS\n$ OTEL_SERVICE_NAME=orders-api \\\n  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \\\n  node --require @opentelemetry/auto-instrumentations-node/register dist/main.js\n\n# ES modules（Nest 12 默认）\n$ OTEL_SERVICE_NAME=orders-api \\\n  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \\\n  node --experimental-loader=@opentelemetry/instrumentation/hook.mjs \\\n  --import @opentelemetry/auto-instrumentations-node/register dist/main.js"
+      }
+    ],
+    "api": [
+      "openTelemetry",
+      "otlp",
+      "traceparent",
+      "tracestate",
+      "@opentelemetry/api",
+      "NodeSDK",
+      "OTLPTraceExporter",
+      "startActiveSpan()"
+    ],
+    "pitfalls": [
+      "Observe 与 OpenTelemetry SDK 都会挂钩数据库驱动，需在预发布环境验证，目前主要测试过 pg。",
+      "零代码插桩放进 main.ts 会因加载顺序丢失部分插桩，必须在 node 命令行预加载。",
+      "otlp 只支持 OTLP/HTTP，不支持 gRPC，端口应指向后端的 4318。"
+    ],
+    "enterprise": "已有统一 OpenTelemetry 后端时，保留其作为跨语言事实源，在 Nest 服务启用 Observe 并配置 otlp 导出，使 provider 级 span 也进入同一后端；否则用 openTelemetry 只共享 trace id。",
+    "related": [
+      "observability/sdk",
+      "observability/distributed-tracing",
+      "observability/choosing-an-apm",
+      "observability/overview"
+    ]
+  },
+  {
+    "id": "observability/choosing-an-apm",
+    "titleZh": "如何选择 APM",
+    "summary": "没有对所有 NestJS 应用都最优的 APM，正确选择取决于系统中 Nest 的占比、已有基础设施以及是否需要监控应用之外的东西。本页横向对比 NestJS Observe、OpenTelemetry、Sentry、Datadog、New Relic 与 Elastic APM：各自在 Nest 应用中需要怎样安装、装好后能看到多少 Nest 结构、以及在什么情况下应选它；这些工具并非互斥，可以组合使用。",
+    "sections": [
+      {
+        "heading": "共同前提",
+        "text": "多数 APM agent 通过按加载顺序打补丁工作（HTTP 服务器、路由、数据库驱动），因此必须在 @nestjs/core 与 AppModule 之前启动。方式有两种：node 命令行的预加载标志（CommonJS 用 --require，ESM 用 --import 加 loader hook），或在 main.ts 第一行导入 instrumentation 文件。从 Nest 模块内部启动很脆弱，此时可能已有库被加载。"
+      },
+      {
+        "heading": "各工具定位",
+        "text": "Observe 面向 Nest 服务；OpenTelemetry 适合非 Nest 服务或需要厂商中立的统一标准；Sentry 适合以前端加后端错误为主要关注点；Datadog 与 New Relic 适合多语言、需要真实基础设施监控且有专人维护的平台；Elastic APM 适合已用 Elastic Stack 或数据必须自控的场景。它们可以组合使用。"
+      },
+      {
+        "heading": "Nest 可见性对比",
+        "text": "Observe 自动为每个 provider 方法生成 span，覆盖守卫、拦截器、管道、队列与 GraphQL 解析器；Sentry 的官方 SDK 能为请求管线生成 span，但服务层仍需自行插桩；New Relic 在 @nestjs/core 10+ 上按路由命名事务；Datadog 与 Elastic 未把 Nest 列为支持框架，只能看到 Express/Fastify、出站调用与驱动。"
+      },
+      {
+        "heading": "组合方式",
+        "text": "Observe 可与 OpenTelemetry、Datadog、New Relic 并行：开启 openTelemetry 并配置 otlp，把 Nest 服务的 provider span 送入对方 trace；前端用 Sentry、后端 Nest 用 Observe 也是常见组合。选型建议按团队已运行的栈、是否多语言、数据是否需要自持以及是否有人力维护来决策，并自行按流量估算价格。"
+      }
+    ],
+    "keyPoints": [
+      "选择依据：Nest 占比、已有基础设施、是否关注应用外的基础设施与错误。",
+      "所有 agent 都必须在 @nestjs/core 与 AppModule 之前加载，否则部分插桩失效。",
+      "NestJS Observe 自动把每个 provider 方法记录为 span，是 Nest 可见性最深的方案。",
+      "OpenTelemetry 厂商中立，但 Nest 插桩停在控制器层，provider 需手动加 span。",
+      "Sentry 强在错误与前后端一体；Datadog 与 New Relic 强在多语言与基础设施。",
+      "Elastic APM 适合已有 Elastic Stack 或数据必须自控的场景，Nest 不在支持列表。",
+      "多个方案可组合，Observe 可用 openTelemetry/otlp 与现有 APM 共享 trace。"
+    ],
+    "snippets": [
+      {
+        "title": "Sentry 在 Nest 中的初始化",
+        "lang": "typescript",
+        "code": "// instrument.ts —— 必须在 main.ts 最前面导入\nimport * as Sentry from '@sentry/nestjs';\n\nSentry.init({\n  dsn: process.env.SENTRY_DSN,\n  tracesSampleRate: 1.0,\n});\n\n// main.ts\nimport './instrument';\nimport { NestFactory } from '@nestjs/core';"
+      }
+    ],
+    "api": [
+      "NestJS Observe",
+      "OpenTelemetry",
+      "Sentry",
+      "Datadog",
+      "New Relic",
+      "Elastic APM",
+      "@sentry/nestjs",
+      "dd-trace",
+      "newrelic",
+      "elastic-apm-node"
+    ],
+    "pitfalls": [
+      "从 Nest 模块内部初始化 APM agent 会因加载顺序漏掉已加载的库，必须在入口之前启动。",
+      "Nest 12 的 nest new 默认生成 ESM 项目，多数 agent 需要额外的 loader 标志。",
+      "以为平台 APM 能看到 Nest provider 级耗时，实际只能看到路由与驱动层。"
+    ],
+    "enterprise": "多语言平台继续用 Datadog/New Relic，Nest 后端叠加 Observe 获得 provider 级视图并通过 otlp 汇入同一后端；错误优先的前后端团队保留 Sentry；数据自持需求选 Elastic 或自建 OTel 后端。",
+    "related": [
+      "observability/overview",
+      "observability/opentelemetry",
+      "observability/sdk"
+    ]
+  },
+  {
+    "id": "devtools/overview",
+    "titleZh": "Devtools 概览",
+    "summary": "Nest Devtools 提供应用内部结构的交互式实时视图：模块、提供者、控制器以及将它们连接起来的路由和事件，变成一个可搜索、过滤和点击的实时图，而不必从 import 与构造函数签名里拼凑。本页说明如何首次把本地应用接入 Devtools，以及 Graph Explorer、排查 Cannot resolve dependency、路由浏览器、Playground、启动性能分析、Audit 与静态图预览等功能。",
+    "sections": [
+      {
+        "heading": "接入步骤",
+        "text": "在 main.ts 的 NestFactory.create() 选项里设置 snapshot: true，让 Nest 收集重建依赖图所需的元数据；安装 @nestjs/devtools-integration；在根模块导入 DevtoolsModule.register()，用 http 开关控制是否启动内省服务器。DevtoolsModule 不应在生产环境运行；快照只在应用启动时收集一次，常规请求处理几乎没有运行时开销。"
+      },
+      {
+        "heading": "Graph Explorer",
+        "text": "应用运行后打开 devtools.nestjs.com 查看内省图。每个模块都连接到全局的 InternalCoreModule，可用 Hide global modules 减少连线干扰。DevtoolsModule 默认在 8000 端口启动轻量 HTTP 服务器，端口被占用时用 port 选项修改；点击节点可 Focus 或 Inspect 到 /debug 页，也可导出 PNG，侧边栏还能缩小邻接范围。"
+      },
+      {
+        "heading": "排查依赖解析错误",
+        "text": "对 @nestjs/core 9.3.10+，设置 snapshot: true 与 abortOnError: false，并在 bootstrap().catch 中用 PartialGraphHost.toString() 写入 graph.json；把该文件拖入 Devtools 的 Preview 模式即可定位缺失提供者的模块。图中会显示 TasksService 依赖的 DiagnosticsService 不在 TasksModule 上下文，修复方式是导入对应模块。"
+      },
+      {
+        "heading": "其他诊断工具",
+        "text": "Routes explorer 展示所有入口（含 WebSocket、gRPC、GraphQL），可展开某个入口的完整执行流程（守卫、拦截器、管道）；Playground 用启动时打印的 sandbox session token 即时执行代码并查看日志；Bootstrap performance 按实例化时间排序类节点；Audit 像应用架构的 linter，给出错误、警告与提示。"
+      }
+    ],
+    "keyPoints": [
+      "设置 NestFactory.create() 的 snapshot: true 收集依赖图元数据。",
+      "安装 @nestjs/devtools-integration 并在根模块导入 DevtoolsModule.register()。",
+      "DevtoolsModule 绝不应在生产运行，用 http 开关在非生产环境启用。",
+      "DevtoolsModule 默认在 8000 端口启动内省 HTTP 服务器，可用 port 选项修改。",
+      "abortOnError: false 与 PartialGraphHost.toString() 可导出部分图排查依赖解析失败。",
+      "Routes explorer 覆盖 HTTP、WebSocket、gRPC、GraphQL 等所有入口及其执行流程。",
+      "Bootstrap performance 按实例化时间排序，Audit 如同应用架构的 linter。"
+    ],
+    "snippets": [
+      {
+        "title": "启用快照与 Devtools 模块",
+        "lang": "typescript",
+        "code": "// main.ts\nconst app = await NestFactory.create(AppModule, {\n  snapshot: true,\n});\n\n// app.module.ts\n@Module({\n  imports: [\n    DevtoolsModule.register({\n      http: process.env.NODE_ENV !== 'production',\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "导出依赖失败时的部分图",
+        "lang": "typescript",
+        "code": "bootstrap().catch((err) => {\n  writeFileSync('graph.json', PartialGraphHost.toString() ?? '');\n  process.exit(1);\n});\n\nconst app = await NestFactory.create(AppModule, {\n  snapshot: true,\n  abortOnError: false,\n});"
+      }
+    ],
+    "api": [
+      "snapshot",
+      "@nestjs/devtools-integration",
+      "DevtoolsModule.register()",
+      "PartialGraphHost",
+      "SerializedGraph",
+      "abortOnError",
+      "preview",
+      "NestFactory.create()"
+    ],
+    "pitfalls": [
+      "DevtoolsModule 不应进入生产环境，务必用 NODE_ENV 或 http: false 关闭。",
+      "snapshot 与 abortOnError 需同时设置，否则启动失败时不会写出 graph.json。",
+      "图中所有模块都连到 InternalCoreModule 造成噪音，可勾选 Hide global modules。"
+    ],
+    "enterprise": "把 Devtools 作为新成员入职与拆分模块的工具：仅非生产环境接入，出现 Cannot resolve dependency 时上传部分图快速定位；重构或拆微服务前用子图视图确认依赖边界，避免把高耦合模块带进新服务。",
+    "related": [
+      "devtools/ci-cd-integration",
+      "fundamentals/injection-scopes",
+      "faq/common-errors"
+    ]
+  },
+  {
+    "id": "devtools/ci-cd-integration",
+    "titleZh": "CI/CD 集成",
+    "summary": "Devtools 的 CI/CD 集成（Enterprise 方案）在每次构建时发布应用依赖图快照，形成架构演进历史，并在每个 pull request 上给出结构化变更报告。它回答的不再是“希望这次重构没破坏什么”，而是确定性地知道改了哪些节点与连线。本页说明如何用 GraphPublisher 发布依赖图、如何生成报告与预览，以及 GitHub Actions、GitLab CI 等平台的配置方式。",
+    "sections": [
+      {
+        "heading": "发布依赖图",
+        "text": "在 main.ts 中根据 PUBLISH_GRAPH 环境变量区分发布运行与常规启动；设置 snapshot: true 与 preview: true（preview 模式不执行控制器、增强器与提供者的构造函数和生命周期钩子，让 CI 更快且无需数据库）；调用 app.init() 后用 new GraphPublisher(app).publish(publishOptions) 推送序列化图，完成后 app.close()。"
+      },
+      {
+        "heading": "报告与预览",
+        "text": "当仓库中已有可对比的快照时，Devtools 会为每次构建自动生成报告：深度嵌套 provider 的作用域变化、端点移除守卫、模块变为全局导致的连线激增都会被列为 affected change。点击 Preview 可回放每个已发布图：绿色为新增、浅白为更新、红色为删除节点，便于在 PR 描述中链接可核验的架构证据。"
+      },
+      {
+        "heading": "GitHub Actions",
+        "text": "在 .github/workflows 中新增工作流，在 pull_request 与 push 到 master 时执行；安装依赖后运行 PUBLISH_GRAPH=true npm run start，并提供 DEVTOOLS_API_KEY、REPOSITORY_NAME、BRANCH_NAME、TARGET_SHA 等环境变量。建议把 API key 存为 GitHub secret，并安装 GitHub App，以便在 PR 中显示预览与报告状态。"
+      },
+      {
+        "heading": "GitLab 与其他平台",
+        "text": ".gitlab-ci.yml 中用 node:22 镜像、npm ci 后运行 PUBLISH_GRAPH=true 的发布任务，并提供 CI_PROJECT_NAME、CI_COMMIT_SHA、CI_MERGE_REQUEST_DIFF_BASE_SHA 等变量；若 CI 不提供目标提交，可用 targetBranch 让系统自动解析。任意 CI 都可通过 publishOptions 的 apiKey、repository、owner、sha、target、trigger、branch 字段接入。"
+      }
+    ],
+    "keyPoints": [
+      "用 GraphPublisher(app).publish(options) 在 CI 构建时发布序列化依赖图。",
+      "preview: true 让 CI 启动时不执行构造函数与生命周期钩子，速度快且无需外部依赖。",
+      "报告只有在仓库中已存在可对比快照时才会生成，按节点与连线变更列出差异。",
+      "Preview 回放图中绿色为新增、浅白为更新、红色为删除的节点。",
+      "publishOptions 需要 apiKey、repository、owner、sha、target、trigger、branch。",
+      "GitHub Actions 通过 PUBLISH_GRAPH=true 与 DEVTOOLS_API_KEY 等环境变量接入。",
+      "任何 CI 都可按同一字段映射接入，不限于 GitHub 或 GitLab。"
+    ],
+    "snippets": [
+      {
+        "title": "在 main.ts 中发布依赖图",
+        "lang": "typescript",
+        "code": "async function bootstrap() {\n  const shouldPublishGraph = process.env.PUBLISH_GRAPH === 'true';\n\n  const app = await NestFactory.create(AppModule, {\n    snapshot: true,\n    preview: shouldPublishGraph,\n  });\n\n  if (shouldPublishGraph) {\n    await app.init();\n    const graphPublisher = new GraphPublisher(app);\n    await graphPublisher.publish(publishOptions);\n    await app.close();\n  } else {\n    await app.listen(3000);\n  }\n}"
+      },
+      {
+        "title": "GitHub Actions 发布工作流",
+        "lang": "yaml",
+        "code": "jobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '22'\n          cache: 'npm'\n      - run: npm ci\n      - name: Publish\n        run: PUBLISH_GRAPH=true npm run start\n        env:\n          DEVTOOLS_API_KEY: ${{ secrets.DEVTOOLS_API_KEY }}\n          REPOSITORY_NAME: ${{ github.event.repository.name }}"
+      }
+    ],
+    "api": [
+      "GraphPublisher",
+      "publish()",
+      "snapshot",
+      "preview",
+      "PUBLISH_GRAPH",
+      "DEVTOOLS_API_KEY",
+      "publishOptions",
+      "app.init()"
+    ],
+    "pitfalls": [
+      "只有目标快照已存在时才会生成报告；首次接入只能看到图，还没有 diff 可看。",
+      "preview 模式不执行构造与生命周期钩子，不要指望它验证运行期行为。",
+      "把 DEVTOOLS_API_KEY 硬编码在工作流中会泄漏，应放 CI secret 并单独签发。"
+    ],
+    "enterprise": "把依赖图发布接入 PR 流水线，用报告替代口头保证“只改了 billing 模块”；为 master 或部署分支持续发布快照以积累历史，并把报告链接写入 PR 模板作为架构评审证据，同时把 API key 放入 CI secret。",
+    "related": [
+      "devtools/overview",
+      "cli/monorepo"
+    ]
+  }
+]

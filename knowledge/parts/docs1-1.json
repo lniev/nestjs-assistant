@@ -1,0 +1,386 @@
+[
+  {
+    "id": "introduction",
+    "titleZh": "简介",
+    "summary": "NestJS 是用于构建高效、可扩展 Node.js 服务端应用的框架，采用渐进式 JavaScript 并完整支持 TypeScript，融合面向对象、函数式与函数响应式编程。它默认运行在 Express 之上，也可切换 Fastify 或 node:http，在提供抽象层的同时直接暴露底层平台 API，让开发者自由使用生态中的第三方模块。",
+    "sections": [
+      {
+        "heading": "设计哲学",
+        "text": "Node.js 生态已有大量优秀库、辅助工具与框架，但都没有真正解决应用架构问题。Nest 提供开箱即用的架构，借鉴 Angular 的组织方式，用模块、依赖注入与装饰器把代码组织成高可测试、可扩展、低耦合、易维护的结构，让个人与团队都能规模化协作。"
+      },
+      {
+        "heading": "安装与脚手架",
+        "text": "推荐用 Nest CLI 初始化项目：全局安装 @nestjs/cli 后执行 nest new project-name，CLI 会创建目录、安装依赖并生成约定式结构。也可以克隆 TypeScript/JavaScript starter 项目，或从零手动搭建。"
+      },
+      {
+        "heading": "底层 HTTP 平台",
+        "text": "Nest 不重造 HTTP 服务器，而是构建在 Express、Fastify 或 Node 内置 node:http 之上，并通过平台适配器暴露各自的 API。默认使用 @nestjs/platform-express，无需额外配置；需要更高性能或更低开销时可以切换平台，同时仍能直接调用底层框架能力。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 应用基于 Node.js，使用渐进式 JavaScript，完整支持 TypeScript",
+      "融合面向对象（OOP）、函数式（FP）与函数响应式（FRP）编程范式",
+      "默认使用 Express，可通过平台适配器切换 Fastify 或 node:http",
+      "在底层框架之上提供抽象层，同时直接向开发者暴露其原生 API",
+      "核心目标是解决应用架构问题，架构设计深受 Angular 启发",
+      "推荐用 Nest CLI 脚手架：npm i -g @nestjs/cli 后执行 nest new",
+      "最小依赖：@nestjs/core、@nestjs/common、rxjs、reflect-metadata"
+    ],
+    "snippets": [
+      {
+        "title": "用 Nest CLI 创建项目",
+        "lang": "bash",
+        "code": "# 1. 全局安装 Nest CLI\n$ npm i -g @nestjs/cli\n\n# 2. 生成新项目（CLI 会询问包管理器并安装依赖）\n$ nest new project-name\n\n# 3. 进入项目目录并启动开发服务器\n$ cd project-name\n$ npm run start\n\n# 4. 浏览器访问 http://localhost:3000/ 查看 Hello World"
+      }
+    ],
+    "api": [
+      "NestFactory",
+      "@nestjs/cli",
+      "@nestjs/platform-express",
+      "@nestjs/platform-fastify",
+      "@nestjs/platform-node"
+    ],
+    "pitfalls": [
+      "Nest 不是 Express 的替代品，而是其上的抽象层；特殊需求仍要调用原生 API",
+      "只装 @nestjs/core 不够，还需 @nestjs/common、rxjs、reflect-metadata",
+      "用纯 JavaScript 时依赖 Babel 转译装饰器，否则 @Module() 等语法无法运行"
+    ],
+    "enterprise": "新项目统一用 Nest CLI 生成，固定包管理器与测试框架；把框架抽象层作为团队默认架构，业务代码不直接耦合 Express，从而保留切换到 Fastify 或 Node 适配器的空间。",
+    "related": [
+      "first-steps",
+      "cli/overview",
+      "http/performance"
+    ]
+  },
+  {
+    "id": "first-steps",
+    "titleZh": "第一步",
+    "summary": "本章用一套基础 CRUD 应用引出 Nest 的核心构建块：控制器、提供者与模块。内容涵盖 TypeScript/JavaScript 语言选择、Node.js 版本要求、用 Nest CLI 生成项目、src/ 下的关键文件、main.ts 中的引导逻辑、Express/Fastify/Node 三大平台与适配器选择，以及启动、监听与 lint/format 工作流。",
+    "sections": [
+      {
+        "heading": "项目脚手架",
+        "text": "全局安装 @nestjs/cli 后执行 nest new project-name，CLI 会询问模块系统：ESM（默认，用 Vitest）或 CommonJS（用 Jest）。生成的项目默认开启 TypeScript strict 模式，src/ 内含 app.controller.ts、app.module.ts 与 main.ts 等核心文件。"
+      },
+      {
+        "heading": "入口与引导",
+        "text": "main.ts 是应用入口，用 @nestjs/core 的 NestFactory.create(AppModule) 创建应用实例，返回实现 INestApplication 接口的对象，再调用 app.listen() 启动 HTTP 监听。默认创建失败会以退出码 1 结束进程，传 abortOnError: false 可改为抛出异常。"
+      },
+      {
+        "heading": "平台与适配器",
+        "text": "Nest 与平台无关：platform-express 是默认、久经考验的选择；platform-fastify 追求高性能低开销；platform-node 直接跑在 node:http 上，是三者中最快的。v12.3 起推荐新应用使用 NodeAdapter，并将在 v13 成为默认。给 create() 传类型参数即可访问平台专属 API。"
+      },
+      {
+        "heading": "运行与开发工作流",
+        "text": "npm run start 启动服务并监听 3000 端口（可用 PORT 覆盖），浏览器访问可看到 Hello World；npm run start:dev 监听文件变化并自动重新编译重启。CLI 生成的项目预装 oxlint 与 Prettier，可用 npm run lint 与 npm run format 在 CI 或 Git 钩子中执行。"
+      }
+    ],
+    "keyPoints": [
+      "运行 Nest 需 Node.js v20.19+（22.x 线需 v22.12+），CLI 生成器要求更高",
+      "main.ts 用 NestFactory.create() 创建应用，返回 INestApplication",
+      "创建失败默认以退出码 1 退出，可用 abortOnError: false 改为抛错",
+      "三大平台为 platform-express、platform-fastify、platform-node",
+      "v12.3 起建议新应用使用 NodeAdapter，并计划在 v13 成为默认",
+      "npm run start:dev 监听文件变化并重编译重启；start 加 -b swc 可加速构建",
+      "项目内置 oxlint 与 Prettier，提供 lint 与 format 两条 npm 脚本"
+    ],
+    "snippets": [
+      {
+        "title": "main.ts 引导应用",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  // 创建应用实例，返回实现 INestApplication 接口的对象\n  const app = await NestFactory.create(AppModule);\n\n  // 启动 HTTP 监听，等待入站请求\n  await app.listen(process.env.PORT ?? 3000);\n}\n\n// 顶层 await 直接调用引导函数\nawait bootstrap();"
+      },
+      {
+        "title": "使用 Node 适配器启动",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { NestNodeApplication, NodeAdapter } from '@nestjs/platform-node';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create<NestNodeApplication>(\n    AppModule,\n    new NodeAdapter(),\n  );\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      }
+    ],
+    "api": [
+      "NestFactory",
+      "NestFactory.create()",
+      "INestApplication",
+      "abortOnError",
+      "NodeAdapter",
+      "NestNodeApplication",
+      "@nestjs/platform-express",
+      "@nestjs/platform-fastify",
+      "@nestjs/platform-node"
+    ],
+    "pitfalls": [
+      "用 Node 适配器时，e2e 测试也要传 new NodeAdapter()，保证与应用一致",
+      "CLI 仅在交互式终端询问 NestJS Observe，CI 默认跳过，可用 --observe 控制",
+      "生成项目默认开启 TypeScript strict 模式，需要关闭时要手动修改 tsconfig.json"
+    ],
+    "enterprise": "新项目用 CLI 统一脚手架并锁定 ESM/CommonJS 与测试框架；适配器选择要与 e2e 测试保持一致，打算迁移 Node 适配器时统一在 createNestApplication() 中传入同一个 adapter。",
+    "related": [
+      "introduction",
+      "controllers",
+      "modules",
+      "http/performance"
+    ]
+  },
+  {
+    "id": "controllers",
+    "titleZh": "控制器",
+    "summary": "控制器负责接收请求并返回响应，用 @Controller() 声明路由前缀、用 @Get()/@Post() 等方法装饰器映射端点。Nest 提供标准响应模式（自动序列化 JSON、默认 200、POST 默认 201）与库特定模式（用 @Res() 直接操作原生响应）。本章还覆盖请求对象、动态路由参数、通配符、状态码、响应头、重定向、子域名路由、异步响应与 DTO 载荷。",
+    "sections": [
+      {
+        "heading": "路由与响应模式",
+        "text": "处理器的路由由控制器前缀与方法装饰器路径拼接而成：@Controller('cats') 加 @Get() 映射 GET /cats，加 @Get('breed') 则映射 GET /cats/breed。标准模式下返回对象或数组会自动序列化为 JSON，返回原始值则直接发送；用 @Res() 注入原生响应对象会进入库特定模式，需自行发送响应。"
+      },
+      {
+        "heading": "请求数据与参数提取",
+        "text": "@Req() 注入原生请求对象，但多数场景应使用 @Body()、@Query()、@Param()、@Headers() 等专用装饰器。请求体结构用 DTO 描述，推荐定义为类而非接口，因为接口在编译后被擦除，管道拿不到 metatype。这些装饰器还支持 schema 与 pipes 选项，可直接附加 Standard Schema 校验。"
+      },
+      {
+        "heading": "状态码与响应控制",
+        "text": "默认状态码为 200，POST 为 201，可用 @HttpCode(...) 在处理器级别覆盖；@Header() 设置自定义响应头；@Redirect() 声明重定向，默认状态码 302，返回 { url, statusCode } 对象可动态覆盖。需要完全控制响应时用 @Res()，但应配合 passthrough: true 保留拦截器与框架能力。"
+      },
+      {
+        "heading": "路由冲突与解析顺序",
+        "text": "Nest 按声明顺序注册路由，在 Express 这类顺序敏感的适配器上，参数化路由可能静默遮蔽更具体的静态路由。v12 新增 routeConflictPolicy 做启动期诊断，routeResolutionStrategy 设为 specificity 可按字面量优先排序。"
+      }
+    ],
+    "keyPoints": [
+      "@Controller('cats') 定义路由前缀，@Get()/@Post() 等方法装饰器绑定端点",
+      "标准模式返回对象或数组自动序列化为 JSON，默认状态码 200，POST 默认 201",
+      "@Res() 注入原生响应会进入库特定模式，必须自行发送响应否则请求挂起",
+      "@Body()、@Query()、@Param() 支持 schema 选项，可直接附加标准 schema",
+      "DTO 推荐用类而非接口，接口编译后被擦除，管道无法拿到 metatype",
+      "@HttpCode()、@Header()、@Redirect() 可声明式控制状态码、响应头与重定向",
+      "routeConflictPolicy 可诊断重复与遮蔽路由，v12 起可配置"
+    ],
+    "snippets": [
+      {
+        "title": "基础 CRUD 控制器",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';\nimport { CreateCatDto } from './dto/create-cat.dto';\n\n@Controller('cats')\nexport class CatsController {\n  @Post()\n  create(@Body() createCatDto: CreateCatDto) {\n    return 'This action adds a new cat';\n  }\n\n  @Get()\n  findAll() {\n    return 'This action returns all cats';\n  }\n\n  @Get(':id')\n  findOne(@Param('id') id: string) {\n    return `This action returns a #${id} cat`;\n  }\n\n  @Delete(':id')\n  remove(@Param('id') id: string) {\n    return `This action removes a #${id} cat`;\n  }\n}"
+      },
+      {
+        "title": "状态码、响应头与重定向",
+        "lang": "typescript",
+        "code": "import {\n  Controller,\n  Get,\n  Post,\n  Query,\n  HttpCode,\n  Header,\n  Redirect,\n} from '@nestjs/common';\n\n@Controller('cats')\nexport class CatsController {\n  @Post()\n  @HttpCode(204)\n  @Header('Cache-Control', 'no-store')\n  create() {\n    return 'This action adds a new cat';\n  }\n\n  @Get('docs')\n  @Redirect('https://docs.nestjs.com', 302)\n  getDocs(@Query('version') version: string) {\n    if (version === '5') {\n      return { url: 'https://docs.nestjs.com/v5/' };\n    }\n  }\n}"
+      }
+    ],
+    "api": [
+      "@Controller()",
+      "@Get()",
+      "@Post()",
+      "@Body()",
+      "@Param()",
+      "@Query()",
+      "@Res()",
+      "@HttpCode()",
+      "@Header()",
+      "@Redirect()"
+    ],
+    "pitfalls": [
+      "同一路由混用标准返回与 @Res() 会让标准模式失效，需启用 @Res({ passthrough: true })",
+      "参数化路由若声明在静态路由之前，会遮蔽 /users/me 这类更具体路由，且启动时不报警",
+      "查询参数到达时都是字符串，仅靠 number 类型标注不会转换，必须配合 ParseIntPipe"
+    ],
+    "enterprise": "控制器保持薄，只做参数绑定与调用服务；统一用标准响应模式与全局 ValidationPipe，避免 @Res() 破坏拦截器链；为 Express 适配器开启 routeConflictPolicy: 'error'，在启动期拦截路由冲突。",
+    "related": [
+      "providers",
+      "modules",
+      "pipes",
+      "custom-decorators"
+    ]
+  },
+  {
+    "id": "providers",
+    "titleZh": "提供者",
+    "summary": "提供者是可被 Nest IoC 容器注入的类，服务、仓储、工厂与辅助类都可以是提供者。用 @Injectable() 声明该类由容器管理，再在模块的 providers 数组中注册。控制器把复杂逻辑委托给提供者，Nest 按构造函数参数类型解析依赖，默认单例作用域。本章还介绍可选依赖、属性注入与手动实例化的入口。",
+    "sections": [
+      {
+        "heading": "服务与依赖注入",
+        "text": "CatsService 用 @Injectable() 附加元数据，声明它可被 IoC 容器管理；在控制器中写 constructor(private catsService: CatsService) 即可注入。Nest 依据编译期生成的构造函数参数类型元数据解析依赖，默认 singleton 作用域下只创建一个实例并注入所有依赖方。"
+      },
+      {
+        "heading": "可选与属性注入",
+        "text": "用 @Optional() 标记可选依赖：当 @Inject('HTTP_OPTIONS') 对应的提供者未注册时注入 undefined 而不是启动失败，类需自行合并默认值。属性注入用 @Inject() 装饰属性，适合基类持有依赖、子类通过 super() 传递很繁琐的场景；普通类仍推荐构造函数注入，依赖关系更显式。"
+      },
+      {
+        "heading": "注册与作用域",
+        "text": "提供者必须加入某个模块 @Module() 的 providers 数组，Nest 才能为控制器解析依赖。提供者默认作用域与应用生命周期一致：应用引导时全部实例化，关闭时全部销毁。也可以把提供者设为请求作用域，让生命周期跟随单次请求，详见 Injection scopes。"
+      },
+      {
+        "heading": "手动实例化",
+        "text": "需要突破依赖注入自动解析时有两种手段：用 ModuleRef 获取已有实例或动态创建提供者；在 bootstrap() 或独立应用场景中通过 app.get() 取出容器内的实例并调用。自定义提供者还支持 useValue、useClass、useFactory 等形式，详见 Custom providers。"
+      }
+    ],
+    "keyPoints": [
+      "提供者是在模块 providers 数组中注册、可由 IoC 容器注入的类或值",
+      "@Injectable() 为类附加元数据，声明其生命周期与依赖由 Nest 容器管理",
+      "Nest 按构造函数参数的类类型解析依赖，接口与 import type 无法解析",
+      "默认 singleton 作用域：容器只创建一个实例并注入所有依赖方",
+      "@Optional() 让缺失的提供者注入 undefined，而不在启动时报错",
+      "属性注入用 @Inject() 装饰属性，适合基类共享依赖，否则优先构造函数注入",
+      "手动获取或动态实例化用 ModuleRef，引导阶段可改用独立应用上下文"
+    ],
+    "snippets": [
+      {
+        "title": "定义可注入的服务",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport type { Cat } from './interfaces/cat.interface';\n\n@Injectable()\nexport class CatsService {\n  private readonly cats: Cat[] = [];\n\n  create(cat: Cat) {\n    this.cats.push(cat);\n  }\n\n  findAll(): Cat[] {\n    return this.cats;\n  }\n}"
+      },
+      {
+        "title": "注册提供者并注入控制器",
+        "lang": "typescript",
+        "code": "// app.module.ts\nimport { Module } from '@nestjs/common';\nimport { CatsController } from './cats/cats.controller';\nimport { CatsService } from './cats/cats.service';\n\n@Module({\n  controllers: [CatsController],\n  providers: [CatsService],\n})\nexport class AppModule {}\n\n// cats.controller.ts：按构造函数参数类型解析并注入实例\n@Controller('cats')\nexport class CatsController {\n  constructor(private readonly catsService: CatsService) {}\n}"
+      }
+    ],
+    "api": [
+      "@Injectable()",
+      "@Optional()",
+      "@Inject()",
+      "ModuleRef",
+      "NestFactory.createApplicationContext()"
+    ],
+    "pitfalls": [
+      "接口或 import type 导入的类在编译期被擦除，构造函数注入会在启动时报无法解析依赖",
+      "@Optional() 只处理缺失场景，注入值是 undefined，类需自行合并默认值",
+      "非继承场景滥用属性注入会隐藏依赖关系，不利于测试替身与重构"
+    ],
+    "enterprise": "用模块边界圈定服务并按领域导出最小 provider 集合；统一构造函数注入以便测试替身，跨模块共享的服务在 exports 中显式声明，禁止直接 new 或依赖全局可变状态。",
+    "related": [
+      "controllers",
+      "modules",
+      "fundamentals/custom-providers",
+      "fundamentals/injection-scopes"
+    ]
+  },
+  {
+    "id": "modules",
+    "titleZh": "模块",
+    "summary": "模块是带 @Module() 装饰器的类，通过 providers、controllers、imports、exports 四个属性描述应用结构，Nest 从根模块出发构建应用图。模块默认封装提供者，只有 exports 的部分才对导入方可见；@Global() 可把模块提升为全局。动态模块用 forRoot() 返回 DynamicModule，让模块在运行时按导入方传入的配置实例化。",
+    "sections": [
+      {
+        "heading": "元数据与封装",
+        "text": "@Module() 接收单个对象：providers 是注入器实例化的提供者，controllers 是必须实例化的控制器，imports 列出所需的导入模块，exports 是向其他模块公开的提供者子集。模块默认封装提供者，导出的提供者构成模块的公共接口，即 API。"
+      },
+      {
+        "heading": "特性模块与共享模块",
+        "text": "按业务领域把控制器与提供者归入特性模块（如 CatsModule），可让边界清晰并符合 SOLID 原则；最后把特性模块加入 AppModule 的 imports。模块默认是单例，任何模块都可以复用；把 CatsService 放进 exports 后，所有导入 CatsModule 的模块共享同一实例，模块也可以重导出其导入的模块。"
+      },
+      {
+        "heading": "全局模块",
+        "text": "Nest 把提供者封装在模块作用域内，不导入就无法使用。用 @Global() 可让一组提供者全局可用，典型用于工具函数或数据库连接；不过全局模块应只在根模块或核心模块注册一次。把所有模块都设为全局会削弱 imports 的显式边界，官方明确不推荐。"
+      },
+      {
+        "heading": "动态模块与配置",
+        "text": "当模块的提供者依赖导入方传入的配置时，用静态方法（如 forRoot()）返回 DynamicModule，可同步或异步返回 Promise。返回值会扩展而非覆盖 @Module() 中的元数据；只有导入 forRoot() 的模块才能注入其提供者，重复调用会产生第二套配置，共享时应重导出模块类。"
+      }
+    ],
+    "keyPoints": [
+      "@Module() 用 providers、controllers、imports、exports 描述模块",
+      "模块默认封装提供者，只有列入 exports 的提供者才能被导入方注入",
+      "模块是单例，重复 import 同一模块共享同一提供者实例，且支持模块重导出",
+      "@Global() 让提供者全局可用，但通常只在根模块或核心模块注册一次",
+      "动态模块用静态 forRoot() 返回 DynamicModule，可同步或异步返回",
+      "forRoot() 返回的 providers 扩展而非覆盖 @Module() 中声明的元数据",
+      "重复调用 forRoot() 会产生另一套配置实例，需要共享时应重导出模块类"
+    ],
+    "snippets": [
+      {
+        "title": "带导出与全局声明的模块",
+        "lang": "typescript",
+        "code": "import { Module, Global } from '@nestjs/common';\nimport { CatsController } from './cats.controller';\nimport { CatsService } from './cats.service';\n\n@Global()\n@Module({\n  controllers: [CatsController],\n  providers: [CatsService],\n  exports: [CatsService],\n})\nexport class CatsModule {}"
+      },
+      {
+        "title": "用 forRoot() 构建动态模块",
+        "lang": "typescript",
+        "code": "import { DynamicModule, Module } from '@nestjs/common';\nimport { FEATURE_FLAGS } from './feature-flags.constants';\nimport { FeatureFlagsService } from './feature-flags.service';\n\n@Module({\n  providers: [FeatureFlagsService],\n  exports: [FeatureFlagsService],\n})\nexport class FeatureFlagsModule {\n  static forRoot(flags: Record<string, boolean>): DynamicModule {\n    return {\n      module: FeatureFlagsModule,\n      providers: [{ provide: FEATURE_FLAGS, useValue: flags }],\n    };\n  }\n}"
+      }
+    ],
+    "api": [
+      "@Module()",
+      "@Global()",
+      "DynamicModule",
+      "imports",
+      "exports",
+      "providers",
+      "forRoot()",
+      "global"
+    ],
+    "pitfalls": [
+      "在多个模块重复 import 并各自 forRoot/register 会得到多个实例，应配置一次后重导出",
+      "把什么模块都设为 @Global() 会削弱 imports 的显式边界，官方明确不推荐",
+      "模块类可以注入提供者，但模块类本身不能作为提供者注入，会引入循环依赖"
+    ],
+    "enterprise": "按业务域划分 feature module，只有对外契约放进 exports；数据库、配置、日志等基础设施用 @Global() 或 core module 统一导出，动态配置模块只配置一次并重导出。",
+    "related": [
+      "providers",
+      "controllers",
+      "fundamentals/dynamic-modules",
+      "fundamentals/module-ref"
+    ]
+  },
+  {
+    "id": "middleware",
+    "titleZh": "中间件",
+    "summary": "中间件是在路由处理器之前调用的函数，可访问请求、响应与 next()，默认等价于 Express 中间件。可以写成带 @Injectable() 的类（实现 NestMiddleware）或无依赖的函数式中间件，且完整支持依赖注入。中间件不写在 @Module() 里，而是在模块的 configure(consumer) 中用 apply、forRoutes、exclude 绑定到路由。",
+    "sections": [
+      {
+        "heading": "中间件类与依赖注入",
+        "text": "类中间件实现 NestMiddleware 接口的 use(req, res, next) 方法并加 @Injectable()；在 use() 中可执行任意代码、修改请求响应、结束响应或调用 next()。它和提供者、控制器一样可通过构造函数注入同模块依赖。Express、Fastify 与 Node 适配器的中间件签名不同。"
+      },
+      {
+        "heading": "绑定与路由匹配",
+        "text": "包含中间件的模块需实现 NestModule，并在 configure(consumer) 中注册。apply() 可传多个中间件按序执行，forRoutes() 接受路径、RouteInfo 或控制器类；exclude() 排除特定路由或方法，路径不带全局前缀，支持 *splat 通配符。"
+      },
+      {
+        "heading": "函数式与全局中间件",
+        "text": "没有成员和依赖的中间件应写成普通函数，称为函数式中间件，直接传给 apply() 即可。要绑定到所有路由可用 INestApplication 的 app.use()，但这类全局中间件由底层 HTTP 平台处理，无法访问 DI 容器；需要依赖时仍应把类中间件通过 forRoutes('*') 绑定。"
+      },
+      {
+        "heading": "错误处理",
+        "text": "中间件抛出异常时由 Nest 异常层捕获并返回响应，推荐抛出 HttpException 或其内置子类；异步中间件把 use() 声明为 async，让 rejected Promise 交给异常层，也可以把错误传给 next()。由于中间件早于路由选择执行，只有全局异常过滤器能捕获其异常，方法级与控制器级过滤器不会生效。"
+      }
+    ],
+    "keyPoints": [
+      "中间件用 @Injectable() 类实现 NestMiddleware 的 use()，也可写成函数",
+      "中间件在模块 configure(consumer) 中注册，模块需实现 NestModule",
+      "forRoutes() 接受路径、RouteInfo、控制器类；apply() 可传多个中间件按序执行",
+      "exclude() 排除路由且路径不含全局前缀，支持 *splat 通配符与花括号可选形式",
+      "app.use() 注册的是全局中间件，由底层平台处理，无法使用依赖注入",
+      "中间件异常只有全局 exception filter 能捕获，方法与控制器级过滤器不生效",
+      "Express、Fastify、Node 适配器中间件签名不同，Node 适配器沿用 Express 签名"
+    ],
+    "snippets": [
+      {
+        "title": "实现并绑定日志中间件",
+        "lang": "typescript",
+        "code": "import {\n  Injectable,\n  NestMiddleware,\n  Module,\n  NestModule,\n  MiddlewareConsumer,\n} from '@nestjs/common';\nimport type { Request, Response, NextFunction } from 'express';\n\n@Injectable()\nexport class LoggerMiddleware implements NestMiddleware {\n  use(req: Request, res: Response, next: NextFunction) {\n    console.log('Request...');\n    next();\n  }\n}\n\n@Module({})\nexport class AppModule implements NestModule {\n  configure(consumer: MiddlewareConsumer) {\n    consumer.apply(LoggerMiddleware).forRoutes('cats');\n  }\n}"
+      },
+      {
+        "title": "函数式与全局中间件",
+        "lang": "typescript",
+        "code": "import type { Request, Response, NextFunction } from 'express';\n\n// 无依赖时用函数式中间件，可读性更好\nexport function logger(req: Request, res: Response, next: NextFunction) {\n  console.log('Request...');\n  next();\n}\n\n// main.ts：全局中间件由底层 HTTP 平台处理，不参与依赖注入\nconst app = await NestFactory.create(AppModule);\napp.use(logger);\nawait app.listen(process.env.PORT ?? 3000);"
+      }
+    ],
+    "api": [
+      "NestMiddleware",
+      "MiddlewareConsumer",
+      "NestModule",
+      "configure()",
+      "forRoutes()",
+      "exclude()",
+      "apply()",
+      "RequestMethod",
+      "app.use()"
+    ],
+    "pitfalls": [
+      "中间件在路由匹配前执行，只有全局 exception filter 能捕获其异常",
+      "app.use() 注册的全局中间件无法访问 DI 容器，需要依赖时用 forRoutes('*') 绑定类中间件",
+      "exclude() 的路径不带全局前缀；若路由已从 globalPrefix 排除，需另加对应排除项"
+    ],
+    "enterprise": "把令牌解析、请求 ID、日志上下文等横切逻辑放中间件；业务级授权用守卫而非中间件；统一在 AppModule 集中绑定，并按控制器粒度排除健康检查等公共路由。",
+    "related": [
+      "controllers",
+      "guards",
+      "exception-filters",
+      "faq/http-adapter"
+    ]
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "id": "s4-2",
+  "itemId": "s4-2",
+  "stageId": "s4",
+  "stageIndex": 4,
+  "itemIndex": 2,
+  "stageTitleZh": "数据、配置与缓存",
+  "titleZh": "事务、关联与查询性能",
+  "title": "事务、关联与查询性能",
+  "level": "L3",
+  "goal": "掌握事务边界、关联加载与分页，识别并消除 N+1 查询，保证多表并发写入的原子性与一致性。",
+  "practice": "在操练场打开查询日志，对比修复前后列表请求的 SQL 条数。",
+  "deliverable": "下单事务（扣库存+写订单）与带总数的分页列表",
+  "accept": "并发下单库存不为负，列表 SQL 条数固定且返回总数",
+  "minutes": 300,
+  "pageIds": [
+    "data/typeorm",
+    "http/performance"
+  ],
+  "summary": "用内存库模拟带事务与查询日志的数据库：下单把「查库存→扣库存→写订单」放进同一事务（互斥排队 + 失败快照回滚），并发压力演示保证库存不为负；列表用一条 JOIN + COUNT 固定 2 条 SQL，另有 N+1 反例路由对比 2+2N 条（COUNT + 列表 + 每行 2 条）。可改：把扣库存挪到事务外再用 POST /orders/stress 复现超卖，或给分页加过滤条件。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/n-plus-one",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "expect": 201
+    },
+    {
+      "method": "GET",
+      "path": "/db/stats",
+      "expect": 200
+    }
+  ]
+}

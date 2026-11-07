@@ -1,0 +1,48 @@
+{
+  "id": "s1-4",
+  "itemId": "s1-4",
+  "stageId": "s1",
+  "stageIndex": 1,
+  "itemIndex": 4,
+  "stageTitleZh": "心智模型与最小可运行",
+  "titleZh": "模块边界与共享模块",
+  "title": "模块边界与共享模块",
+  "level": "L1",
+  "goal": "用 @Module 划分 feature 与 shared 模块，理清 imports/exports 可见性，避免全部塞进全局模块。",
+  "practice": "在操练场拆出 CatsModule，故意注入未导出的 service，读报错再修复。",
+  "deliverable": "CatsModule 与 exports 一个服务的 LoggerModule",
+  "accept": "AppModule 只导入两个模块即可启动，未导出服务注入报错",
+  "minutes": 120,
+  "pageIds": [
+    "modules"
+  ],
+  "summary": "模块边界入门：根模块只组装 CatsModule（feature）与 LoggerModule（shared），LoggerModule 通过 exports 共享 LoggerService，CatsService 与 AppController 都注入它。删掉 exports 或 imports 就能直观看到「Nest can't resolve dependencies」。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/logs",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats/1",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/cats",
+      "expect": 400
+    }
+  ]
+}

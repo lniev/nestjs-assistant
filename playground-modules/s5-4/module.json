@@ -1,0 +1,60 @@
+{
+  "id": "s5-4",
+  "itemId": "s5-4",
+  "stageId": "s5",
+  "stageIndex": 5,
+  "itemIndex": 4,
+  "stageTitleZh": "认证授权与安全",
+  "titleZh": "Web 安全边界与限流",
+  "title": "Web 安全边界与限流",
+  "level": "L3",
+  "goal": "配置 Helmet、CORS 白名单、CSRF 防护与 Throttler 限流，把安全基线固化成配置与用例。",
+  "practice": "在操练场设置 CORS 白名单与登录限流，用请求台模拟跨域和刷登录。",
+  "deliverable": "安全中间件配置、登录限流与一页安全自查清单",
+  "accept": "非白名单 Origin 被拒，第 6 次登录返回 429，响应带安全头",
+  "minutes": 180,
+  "pageIds": [
+    "security/helmet",
+    "security/cors",
+    "security/rate-limiting"
+  ],
+  "summary": "安全基线三件套：手写 helmet 等价安全响应头、CORS 白名单（非白名单 Origin 直接 403）、登录滑动窗口限流（第 6 次 429 + Retry-After）。bootstrap.ts 里同时用 enableCors 回白名单头并去掉 X-Powered-By，/security/checklist 给出可继续补的安全自查清单。",
+  "defaultFile": "src/security/security.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/security/checklist",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/security/headers",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/security/cors-check?origin=https://portal.example.com",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/security/cors-check?origin=https://evil.example.com",
+      "expect": 403
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expect": 401
+    },
+    {
+      "method": "GET",
+      "path": "/auth/rate-limit?username=alice",
+      "expect": 200
+    }
+  ]
+}

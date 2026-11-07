@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="NestJS Assistant">
+  <defs>
+    <linearGradient id="nestAssistantBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0234e"/>
+      <stop offset="1" stop-color="#8d1430"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#nestAssistantBg)"/>
+  <path d="M64 20 100 41v38L64 100 28 79V41Z" fill="none" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M45 58l-10 10 10 10" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M83 58l10 10-10 10" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M70 50l-12 34" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="64" cy="38" r="5" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,39 @@
+{
+  "id": "s3-1",
+  "itemId": "s3-1",
+  "stageId": "s3",
+  "stageIndex": 3,
+  "itemIndex": 1,
+  "stageTitleZh": "模块化与依赖注入进阶",
+  "titleZh": "自定义 Provider 与注入令牌",
+  "title": "自定义 Provider 与注入令牌",
+  "level": "L3",
+  "goal": "掌握 useClass/useValue/useFactory/useExisting 与字符串、Symbol、抽象类令牌，按环境替换实现。",
+  "practice": "在操练场用 useFactory 注入 ConfigService，返回带超时的 HTTP 客户端。",
+  "deliverable": "PaymentProvider 接口与沙箱、生产两套实现",
+  "accept": "切换 NODE_ENV 即可换实现，业务代码零改动",
+  "minutes": 240,
+  "pageIds": [
+    "fundamentals/custom-providers",
+    "fundamentals/async-providers"
+  ],
+  "summary": "四类自定义 provider 全覆盖：useValue 注入应用元信息、useClass 按 NODE_ENV 在沙箱/生产支付实现间切换、useFactory 注入配置后创建带超时的 HTTP 客户端、useExisting 起别名；令牌含抽象类、Symbol 与字符串三种。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/payments/config",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/payments/charge",
+      "expect": 200
+    }
+  ]
+}

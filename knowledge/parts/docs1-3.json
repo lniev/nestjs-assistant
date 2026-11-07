@@ -1,0 +1,62 @@
+[
+  {
+    "id": "standalone-applications",
+    "titleZh": "独立应用",
+    "summary": "独立应用是没有网络监听器的 Nest 应用，本质是 IoC 容器包装，通过 NestFactory.createApplicationContext() 创建。它让脚本、CRON 任务与 CLI 复用模块和依赖注入，可用 app.get() 或 app.select() 取出任意已注册实例，结束时调用 app.close() 触发关闭钩子。",
+    "sections": [
+      {
+        "heading": "创建独立应用",
+        "text": "用 const app = await NestFactory.createApplicationContext(AppModule) 创建独立应用，它没有网络监听器，只是 Nest IoC 容器的包装对象。适合脚本化的 CRON 任务、批处理、CLI 工具等需要复用模块与依赖注入但不需要 HTTP 服务的场景。"
+      },
+      {
+        "heading": "获取提供者",
+        "text": "app.get(Token) 接收任意提供者 token，在已注册模块中查询实例，默认从根模块开始查找。需要严格上下文时传 { strict: true }，并先用 app.select(Module) 定位模块；动态模块则把 register() 返回的同一对象传给 select()。"
+      },
+      {
+        "heading": "生命周期与关闭",
+        "text": "独立应用没有请求处理链路，因此中间件、拦截器、管道与守卫等依赖请求的特性不会生效，即使注册了全局拦截器，直接调用控制器方法也不会触发。脚本结束前调用 app.close()，才会触发 shutdown 生命周期钩子并让进程退出。"
+      }
+    ],
+    "keyPoints": [
+      "createApplicationContext(AppModule) 创建无网络监听器的独立应用",
+      "独立应用是 IoC 容器包装，可取出任意导入模块中已注册的实例",
+      "app.get(Token) 按 token 在模块图中查询实例，接受任意 provider token",
+      "strict: true 时必须先用 app.select(Module) 选定上下文再 get()",
+      "动态模块要把 register() 返回的同一对象传给 app.select()",
+      "独立应用没有请求处理，中间件、拦截器、管道与守卫不会执行",
+      "结束前调用 app.close() 才触发 shutdown 生命周期钩子并释放资源"
+    ],
+    "snippets": [
+      {
+        "title": "创建独立应用并取出服务",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\nimport { TasksService } from './tasks/tasks.service.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.createApplicationContext(AppModule);\n\n  // 在模块图中按 token 查询实例\n  const tasksService = app.get(TasksService);\n  await tasksService.run();\n\n  // 触发 shutdown 生命周期钩子后退出进程\n  await app.close();\n}\nawait bootstrap();"
+      },
+      {
+        "title": "严格上下文与动态模块",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\n\nconst app = await NestFactory.createApplicationContext(AppModule);\n\n// 非严格模式默认从根模块开始查找\nconst tasksService = app.get(TasksService);\n\n// 严格模式：先 select 到具体模块，再按 token 获取\nconst scopedService = app.select(TasksModule).get(TasksService, { strict: true });\n\n// 动态模块：传入 register 返回的同一对象\nconst configService = app.select(dynamicConfigModule).get(ConfigService, { strict: true });\n\nawait app.close();"
+      }
+    ],
+    "api": [
+      "NestFactory.createApplicationContext()",
+      "app.get()",
+      "app.select()",
+      "app.close()",
+      "INestApplicationContext",
+      "strict"
+    ],
+    "pitfalls": [
+      "独立应用里注册的全局拦截器与管道不会执行，因为它没有请求处理管线",
+      "strict: true 时未用 select() 定位模块会取不到实例，需按模块图逐层导航",
+      "忘记调用 app.close() 会让进程挂起，shutdown 钩子与资源释放也不会执行"
+    ],
+    "enterprise": "把定时任务、队列消费者与运维脚本做成独立应用复用同一模块和配置；用 app.close() 保证优雅退出，CLI 场景可在此之上封装命令。",
+    "related": [
+      "fundamentals/dynamic-modules",
+      "fundamentals/lifecycle-events",
+      "application/task-scheduling",
+      "recipes/repl"
+    ]
+  }
+]

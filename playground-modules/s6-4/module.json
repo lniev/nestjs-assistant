@@ -1,0 +1,60 @@
+{
+  "id": "s6-4",
+  "itemId": "s6-4",
+  "stageId": "s6",
+  "stageIndex": 6,
+  "itemIndex": 4,
+  "stageTitleZh": "工程化与可交付",
+  "titleZh": "文档、版本化与上线",
+  "title": "文档、版本化与上线",
+  "level": "L4",
+  "goal": "用 @nestjs/swagger 生成 OpenAPI，按 URI 或 Header 版本化，用健康检查与容器化上线。",
+  "practice": "在操练场生成 Swagger 文档，给 DTO 加 @ApiProperty 后检查 schema。",
+  "deliverable": "Swagger UI、/health 探针、Dockerfile 与部署说明",
+  "accept": "容器启动后 /docs 可访问、/health 反映依赖、旧版本路由可用",
+  "minutes": 300,
+  "pageIds": [
+    "openapi/introduction",
+    "reliability/terminus",
+    "deployment"
+  ],
+  "summary": "手写 Swagger 等价物：@ApiProperty 元数据 + OpenAPI 文档（GET /docs/openapi.json、GET /docs）；URI/Header 两种版本化；liveness/readiness 探针与部署清单。可改 DTO 装饰器观察 schema 同步，或切换假依赖看 readiness 变 503。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/docs/openapi.json",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/v1/orders",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/v2/orders",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/v1/orders",
+      "expect": 201
+    }
+  ]
+}

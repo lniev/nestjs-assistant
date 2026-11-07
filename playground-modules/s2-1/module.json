@@ -1,0 +1,49 @@
+{
+  "id": "s2-1",
+  "itemId": "s2-1",
+  "stageId": "s2",
+  "stageIndex": 2,
+  "itemIndex": 1,
+  "stageTitleZh": "请求生命周期组件",
+  "titleZh": "管道与 DTO 校验",
+  "title": "管道与 DTO 校验",
+  "level": "L2",
+  "goal": "用 DTO + class-validator + 全局 ValidationPipe 校验入参并转换类型，让非法请求进不了控制器。",
+  "practice": "在操练场提交缺少 name 的请求，对比 whitelist 开关时的响应。",
+  "deliverable": "CreateCatDto、全局 ValidationPipe 与参数级管道",
+  "accept": "缺字段返回 400 且错误清晰，多传字段被剥离或拒绝",
+  "minutes": 180,
+  "pageIds": [
+    "pipes",
+    "application/validation"
+  ],
+  "summary": "管道与 DTO 校验：CreateCatDto/ListCatsQuery 手写等价于 class-validator 的校验与白名单，ValidationPipe 用 APP_PIPE 全局注册，@Param('id') 再叠加内置 ParseIntPipe。请求 POST /cats 传 {} 可看到 400 与错误列表，handler 根本不会执行。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats?name=Tom&limit=1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats/1",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/cats",
+      "expect": 400
+    }
+  ]
+}

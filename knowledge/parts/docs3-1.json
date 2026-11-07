@@ -1,0 +1,382 @@
+[
+  {
+    "id": "application/configuration",
+    "titleZh": "配置",
+    "summary": "讲清如何用 @nestjs/config 包管理多环境配置：ConfigModule.forRoot() 解析并合并 .env 文件与 process.env，再通过 ConfigService 类型安全地读取；支持自定义配置文件、registerAs() 命名空间、forFeature() 部分注册、缓存与变量展开，并能在启动时用 validationSchema 或 validate() 校验环境变量，缺失即失败。",
+    "sections": [
+      {
+        "heading": "加载与注册",
+        "text": "安装后在根模块调用 ConfigModule.forRoot() 解析 .env 并与 process.env 合并，并注册 ConfigService。环境变量优先于文件，override: true 可反转；envFilePath 支持多路径，第一个优先，ignoreEnvFile 让它只读 process.env，isGlobal 免去逐模块导入。"
+      },
+      {
+        "heading": "自定义配置与命名空间",
+        "text": "自定义配置文件导出返回嵌套对象的工厂函数，用 load 数组注册，可在其中转换类型、设置默认值。registerAs('database', () => ...) 生成命名空间，可用 get('database.host') 点号读取，也可用 @Inject(databaseConfig.KEY) 注入强类型对象，asProvider() 还能接给其它模块。"
+      },
+      {
+        "heading": "读取与类型推断",
+        "text": "ConfigService#get 支持泛型提示、点号路径和默认值，getOrThrow() 在缺值时抛错。传入环境变量接口并配合 { infer: true } 会推断属性类型、阻止访问未声明键；第二个泛型传 true 去掉 undefined，cache: true 缓存 process.env 提速。"
+      },
+      {
+        "heading": "启动期校验与扩展",
+        "text": "validationSchema 接受 Standard Schema（Zod 等），启动时校验并可用 coerce/default 转换；validate 函数可用 class-validator 同步校验。envVariablesLoaded 钩子与 ConditionalModule 处理加载顺序，expandVariables 支持变量展开。"
+      }
+    ],
+    "keyPoints": [
+      "ConfigModule.forRoot({ isGlobal: true }) 一次加载全局配置",
+      "envFilePath 指定 .env 路径，多文件时第一个优先，ignoreEnvFile 只读环境变量",
+      "自定义配置文件用工厂函数加 load 数组注册，registerAs() 创建命名空间",
+      "ConfigService#get 支持点号路径与默认值，getOrThrow() 缺值时抛错",
+      "validationSchema 接受 Zod 等 Standard Schema，在启动时校验配置",
+      "ConfigService 泛型加 { infer: true } 提供类型安全，cache: true 提速",
+      "forFeature() 做部分注册，envVariablesLoaded 保证变量已加载"
+    ],
+    "snippets": [
+      {
+        "title": "加载并全局注册 ConfigModule",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { z } from 'zod';\nimport configuration from './config/configuration.js';\n\n@Module({\n  imports: [\n    ConfigModule.forRoot({\n      isGlobal: true,\n      envFilePath: ['.env.development.local', '.env.development'],\n      load: [configuration],\n      cache: true,\n      validationSchema: z.object({\n        NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),\n        PORT: z.coerce.number().default(3000),\n      }),\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "命名空间配置与强类型注入",
+        "lang": "typescript",
+        "code": "import { Inject, Injectable } from '@nestjs/common';\nimport { ConfigType, registerAs } from '@nestjs/config';\n\nconst databaseConfig = registerAs('database', () => ({\n  host: process.env.DATABASE_HOST,\n  port: parseInt(process.env.DATABASE_PORT ?? '', 10) || 5432,\n}));\n\n@Injectable()\nexport class DatabaseService {\n  constructor(\n    @Inject(databaseConfig.KEY)\n    private readonly dbConfig: ConfigType<typeof databaseConfig>,\n  ) {}\n\n  connect() {\n    return createPool({ host: this.dbConfig.host, port: this.dbConfig.port });\n  }\n}"
+      }
+    ],
+    "api": [
+      "ConfigModule",
+      "ConfigService",
+      "forRoot()",
+      "forFeature()",
+      "registerAs()",
+      "validationSchema",
+      "envFilePath",
+      "getOrThrow()",
+      "ConfigType"
+    ],
+    "pitfalls": [
+      "自定义配置文件不会被 validationSchema 校验，它只作用于环境变量",
+      "forFeature() 配置在构造器里可能尚未初始化，应改到 onModuleInit() 读取",
+      "用 Node 原生 --env-file 时不要叠加 expandVariables，两者规则不兼容"
+    ],
+    "enterprise": "配置放在 config/ 按领域拆分文件，用 registerAs() 命名空间并以 ConfigService<T, true> 注入；启动时用 Zod schema 强校验，缺关键变量直接失败；敏感值交给密钥管理服务。",
+    "related": [
+      "cli/overview",
+      "application/logger",
+      "fundamentals/dynamic-modules"
+    ]
+  },
+  {
+    "id": "application/validation",
+    "titleZh": "验证",
+    "summary": "介绍在请求进入处理器前校验数据的两种内置方案：ValidationPipe 基于 class-validator 装饰器验证 DTO 类，并提供白名单剥离、载荷转换、数组解析等选项；StandardSchemaValidationPipe 接受 Zod、Valibot、ArkType 等 Standard Schema，在 @Body()、@Query()、@Param() 上直接声明 schema，两者可以并存。",
+    "sections": [
+      {
+        "heading": "内置校验管道",
+        "text": "安装 class-validator 与 class-transformer 后，用 app.useGlobalPipes(new ValidationPipe()) 全局绑定保护所有端点。DTO 用 @IsEmail()、@IsNotEmpty() 等装饰器声明规则；泛型和接口没有运行时元数据，DTO 必须是具体类且不能用 import type 导入。"
+      },
+      {
+        "heading": "白名单与转换",
+        "text": "whitelist: true 会剥掉类中没有任何校验装饰器的属性，防止多余字段进入处理器，再加 forbidNonWhitelisted: true 则改为直接报错。transform: true 把普通 JSON 对象转为 DTO 实例，并按声明类型转换路径与查询参数中的字符串；disableErrorMessages 可隐藏详细错误。"
+      },
+      {
+        "heading": "映射类型衍生",
+        "text": "PartialType()、PickType()、OmitType()、IntersectionType() 从 CreateCatDto 派生 Update 等变体，自动继承校验装饰器且可任意组合。由于泛型不产生元数据，数组参数不会被逐个校验，需要 ParseArrayPipe({ items: CreateUserDto }) 或用一个类包裹数组属性。"
+      },
+      {
+        "heading": "基于 schema 校验",
+        "text": "StandardSchemaValidationPipe 以 schema 为事实来源，参数类型由 schema 推断；在 @Body({ schema }) 声明 Zod、Valibot schema 即可校验，也能用 @Body('email', { schema }) 校验单个值。默认把 schema 结果交给处理器，未知键由 schema 决定。"
+      }
+    ],
+    "keyPoints": [
+      "全局 useGlobalPipes(new ValidationPipe()) 即可保护所有路由端点",
+      "DTO 用 class-validator 装饰器，如 @IsEmail()，且必须是具体类",
+      "whitelist 剥离无装饰器属性，forbidNonWhitelisted 改为报错",
+      "transform: true 把请求体转为 DTO 实例并转换参数原始类型",
+      "PartialType、PickType、OmitType 等映射类型派生 DTO 变体",
+      "StandardSchemaValidationPipe 用 @Body({ schema }) 校验",
+      "数组用 ParseArrayPipe({ items }) 校验并转换每个元素"
+    ],
+    "snippets": [
+      {
+        "title": "全局启用 ValidationPipe",
+        "lang": "typescript",
+        "code": "import { ValidationPipe } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\nimport { IsEmail, IsNotEmpty } from 'class-validator';\n\nexport class CreateUserDto {\n  @IsEmail()\n  email: string;\n\n  @IsNotEmpty()\n  password: string;\n}\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.useGlobalPipes(\n    new ValidationPipe({\n      whitelist: true,\n      transform: true,\n    }),\n  );\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "用 schema 校验查询参数",
+        "lang": "typescript",
+        "code": "import { z } from 'zod';\n\nexport const listUsersQuerySchema = z.object({\n  page: z.coerce.number().int().min(1).default(1),\n  limit: z.coerce.number().int().min(1).max(100).default(20),\n  search: z.string().trim().optional(),\n});\n\nexport type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;\n\n@Get()\nfindAll(@Query({ schema: listUsersQuerySchema }) query: ListUsersQuery) {\n  return this.usersService.findAll(query);\n}"
+      }
+    ],
+    "api": [
+      "ValidationPipe",
+      "StandardSchemaValidationPipe",
+      "ParseArrayPipe",
+      "ParseIntPipe",
+      "PartialType",
+      "PickType",
+      "OmitType",
+      "IntersectionType"
+    ],
+    "pitfalls": [
+      "TypeScript 不为泛型或接口生成元数据，DTO 必须是具体类且不能用 import type",
+      "数组参数不会被 ValidationPipe 逐元素校验，需 ParseArrayPipe 或包裹类",
+      "自定义装饰器参数默认不被 schema 管道校验，要开 validateCustomDecorators"
+    ],
+    "enterprise": "HTTP 入口统一全局 ValidationPipe({ whitelist: true, transform: true })，DTO 放各模块 dto/ 目录；对外错误用 exceptionFactory 统一格式。",
+    "related": [
+      "pipes",
+      "openapi/introduction",
+      "websockets/pipes"
+    ]
+  },
+  {
+    "id": "application/serialization",
+    "titleZh": "序列化",
+    "summary": "序列化发生在对象返回响应之前，是统一脱敏和裁剪数据的正确位置。Nest 提供 ClassSerializerInterceptor，基于 class-transformer 装饰器（@Exclude()、@Expose()、@Transform()）对返回值执行 instanceToPlain()；还提供 StandardSchemaSerializerInterceptor，用 Zod、Valibot 等 schema 描述输出并充当响应白名单。",
+    "sections": [
+      {
+        "heading": "类装饰器序列化",
+        "text": "ClassSerializerInterceptor 拦截返回值并调用 instanceToPlain()，应用实体类上的 class-transformer 装饰器：@Exclude() 排除密码等敏感字段，@Expose() 添加别名或计算属性，@Transform() 做字段级转换。绑定在方法或应用级别后，所有返回该类的处理器自动遵守同一规则。"
+      },
+      {
+        "heading": "序列化选项",
+        "text": "@SerializeOptions() 的选项作为第二参数转发给 instanceToPlain()，例如 excludePrefixes 排除下划线前缀属性、excludeExtraneousValues 只保留 @Expose() 声明字段。type 选项可先把普通对象转换为指定类的实例，让装饰器生效，同时利用返回类型做 TypeScript 校验。"
+      },
+      {
+        "heading": "Schema 序列化",
+        "text": "StandardSchemaSerializerInterceptor 用 schema 描述响应：z.object() 剥掉未声明属性，schema 即输出 allowlist。通过 @SerializeOptions({ schema }) 在方法或控制器上选择 schema，数组响应逐元素应用；也可全局注册并用 Reflector 读取元数据。"
+      },
+      {
+        "heading": "错误与适用范围",
+        "text": "响应与 schema 不匹配通常意味着服务端 bug，拦截器会抛错让客户端收到 500，而不是返回部分数据，错误信息由默认异常过滤器记录。两种序列化拦截器同样适用于 WebSocket 与微服务，但都不会处理 StreamableFile 流式响应。"
+      }
+    ],
+    "keyPoints": [
+      "ClassSerializerInterceptor 对返回值执行 instanceToPlain()",
+      "@Exclude() 隐藏密码，@Expose() 计算属性，@Transform() 字段转换",
+      "@SerializeOptions() 转发 type、schema、excludePrefixes 等选项",
+      "StandardSchemaSerializerInterceptor 用 schema 做响应白名单",
+      "返回普通对象时用 @SerializeOptions({ type: UserEntity }) 转换",
+      "schema 不匹配按服务端错误返回 500，而不是部分数据"
+    ],
+    "snippets": [
+      {
+        "title": "实体脱敏与控制器序列化",
+        "lang": "typescript",
+        "code": "import { Exclude, Expose } from 'class-transformer';\nimport { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';\n\nexport class UserEntity {\n  id: number;\n  firstName: string;\n  lastName: string;\n\n  @Exclude()\n  password: string;\n\n  @Expose()\n  get fullName(): string {\n    return `${this.firstName} ${this.lastName}`;\n  }\n\n  constructor(partial: Partial<UserEntity>) {\n    Object.assign(this, partial);\n  }\n}\n\n@UseInterceptors(ClassSerializerInterceptor)\n@Get()\nfindOne(): UserEntity {\n  return new UserEntity({ id: 1, firstName: 'John', lastName: 'Doe', password: 'x' });\n}"
+      },
+      {
+        "title": "Zod schema 描述响应体",
+        "lang": "typescript",
+        "code": "import { z } from 'zod';\n\nexport const userResponseSchema = z.object({\n  id: z.number(),\n  firstName: z.string(),\n  lastName: z.string(),\n});\n\n@Controller('users')\n@UseInterceptors(StandardSchemaSerializerInterceptor)\nexport class UsersController {\n  constructor(private readonly usersService: UsersService) {}\n\n  @Get(':id')\n  @SerializeOptions({ schema: userResponseSchema })\n  findOne(@Param('id', ParseIntPipe) id: number) {\n    return this.usersService.findOne(id);\n  }\n}"
+      }
+    ],
+    "api": [
+      "ClassSerializerInterceptor",
+      "StandardSchemaSerializerInterceptor",
+      "@Exclude()",
+      "@Expose()",
+      "@Transform()",
+      "@SerializeOptions()",
+      "instanceToPlain()"
+    ],
+    "pitfalls": [
+      "处理器返回普通对象时类装饰器不生效，需返回类实例或设置 type 选项",
+      "type 选项按目标类塑形，其它实体实例的 @Exclude 会被忽略，敏感字段要全量声明",
+      "两种序列化拦截器都不处理 StreamableFile，流式响应需自行控制"
+    ],
+    "enterprise": "全局挂载序列化拦截器，实体与 DTO 显式 @Exclude 敏感字段；面向外部 API 优先用 schema 序列化作为输出白名单，按版本维护 schema，避免字段泄漏并让文档与实现同步。",
+    "related": [
+      "interceptors",
+      "http/file-upload",
+      "openapi/types-and-parameters"
+    ]
+  },
+  {
+    "id": "application/logger",
+    "titleZh": "日志",
+    "summary": "Nest 内置 Logger 承担启动日志与异常输出，可整体关闭、按级别过滤、输出 JSON、添加前缀与时间戳，或实现 LoggerService 完全替换；还支持继承 ConsoleLogger、通过依赖注入提供自定义 logger、用结构化参数记录字段，并借助 NestJS Observe 给每行日志附加请求 traceId 以便按请求排查。",
+    "sections": [
+      {
+        "heading": "级别与格式化",
+        "text": "创建应用时通过 logger 选项传 false 关闭日志、传级别数组筛选输出，或传 ConsoleLogger 实例定制 colors、prefix、timestamp、json、depth 等。filterLogLevels('>=warn') 可按阈值从环境变量生成数组；应用创建后还可用 app.useLogger() 动态调整级别。"
+      },
+      {
+        "heading": "JSON 与结构化参数",
+        "text": "ConsoleLogger({ json: true }) 让每条日志成为单行 JSON，包含 level、pid、timestamp、message、context，必要时还有 stack 与 params，便于日志平台检索。v12 起消息之后的普通对象会作为结构化参数合并进同一条记录，flattenParams 可把字段展平到 JSON 根层。"
+      },
+      {
+        "heading": "自定义与依赖注入",
+        "text": "实现 LoggerService 即可替换系统日志；更常见的是继承 ConsoleLogger 并重写 error() 或 getTimestamp()。要使用依赖注入，把 MyLogger 放进 LoggerModule 提供并导出，再用 bufferLogs 配合 app.useLogger(app.get(MyLogger)) 让单例接管日志。"
+      },
+      {
+        "heading": "请求关联与外部日志",
+        "text": "NestJS Observe 开启 forwardLogs 后日志会挂在对应 trace 上；即使不转发，SDK 也会给 ConsoleLogger 追加 traceId 字段，便于从一行日志跳到完整调用链。需要写文件、字段脱敏或极高吞吐时，再引入 Pino、Winston 等外部实现。"
+      }
+    ],
+    "keyPoints": [
+      "应用选项 logger: false 或级别数组控制输出范围与详细程度",
+      "filterLogLevels('>=warn') 按阈值生成级别数组，适合读环境变量",
+      "ConsoleLogger({ json: true }) 输出单行结构化 JSON 日志",
+      "消息后的普通对象作为结构化参数，flattenParams 展平到根字段",
+      "实现 LoggerService 或继承 ConsoleLogger 自定义日志行为",
+      "bufferLogs 配合 app.useLogger(app.get(MyLogger)) 走依赖注入",
+      "NestJS Observe 自动给日志附加 traceId 关联单次请求"
+    ],
+    "snippets": [
+      {
+        "title": "生产环境 JSON 日志与业务日志",
+        "lang": "typescript",
+        "code": "import { ConsoleLogger, Injectable, Logger } from '@nestjs/common';\n\nconst app = await NestFactory.create(AppModule, {\n  logger: new ConsoleLogger({\n    json: true,\n    logLevels: ['log', 'warn', 'error', 'fatal'],\n  }),\n});\n\n@Injectable()\nexport class OrdersService {\n  private readonly logger = new Logger(OrdersService.name);\n\n  async capture(order: Order) {\n    this.logger.log('Payment captured', { orderId: order.id, amount: order.total });\n  }\n}"
+      },
+      {
+        "title": "扩展 ConsoleLogger 并注入",
+        "lang": "typescript",
+        "code": "import { ConsoleLogger, Injectable, Scope } from '@nestjs/common';\n\n@Injectable({ scope: Scope.TRANSIENT })\nexport class MyLogger extends ConsoleLogger {\n  protected getTimestamp() {\n    return new Date().toISOString();\n  }\n\n  customLog() {\n    this.log('Please feed the cat!');\n  }\n}\n\n@Injectable()\nexport class CatsService {\n  constructor(private readonly myLogger: MyLogger) {\n    this.myLogger.setContext('CatsService');\n  }\n\n  findAll() {\n    this.myLogger.customLog();\n  }\n}"
+      }
+    ],
+    "api": [
+      "Logger",
+      "ConsoleLogger",
+      "LoggerService",
+      "LogLevel",
+      "bufferLogs",
+      "useLogger()",
+      "filterLogLevels()",
+      "setContext()"
+    ],
+    "pitfalls": [
+      "logger: false 会丢弃 useLogger() 之前的启动日志，排障时应用 bufferLogs",
+      "JSON 模式下 timestamp 与 prefix 选项无效，时间戳固定为 Unix 毫秒",
+      "自定义 logger 里 process.exit 或启动卡住时，缓冲区日志不会输出"
+    ],
+    "enterprise": "统一用 ConsoleLogger({ json: true }) 输出到 stdout，由容器平台采集，进程内不写文件；每行带 traceId 与结构化参数，日志平台按 context、orderId 检索，敏感字段在采集层脱敏。",
+    "related": [
+      "observability/sdk",
+      "application/configuration",
+      "fundamentals/lifecycle-events"
+    ]
+  },
+  {
+    "id": "application/events",
+    "titleZh": "事件",
+    "summary": "Event Emitter 包基于 eventemitter2 实现观察者模式：EventEmitterModule.forRoot() 在应用启动时注册声明式监听器，EventEmitter2#emit 派发事件，@OnEvent() 订阅事件，并支持异步执行、命名空间与通配符。事件让模块间解耦，一个事件可以有多个互不依赖的监听器。",
+    "sections": [
+      {
+        "heading": "模块初始化",
+        "text": "安装后在根模块导入 EventEmitterModule.forRoot()，它会在 onApplicationBootstrap 注册所有声明式监听器，确保模块都已加载；该模块默认全局，无需重复导入。forRoot() 还可传入 wildcard、delimiter、maxListeners 等 eventemitter2 配置。"
+      },
+      {
+        "heading": "派发与监听",
+        "text": "注入 EventEmitter2 后调用 emit 派发事件，监听方法用 @OnEvent('order.created') 订阅，第二个参数可传 async、prependListener、suppressErrors 等选项。若监听器属于请求作用域 provider，Nest 会为每个事件新建实例，事件载荷充当 request 对象。"
+      },
+      {
+        "heading": "通配符与防丢失",
+        "text": "启用 wildcard 与 delimiter 后，事件名可以是点分字符串或数组，监听端用 order.* 匹配单层、用 ** 匹配多层甚至全部事件。在 onApplicationBootstrap 之前派发的事件可能因监听器尚未注册而丢失，可注入 EventEmitterReadinessWatcher 并等待 waitUntilReady()。"
+      }
+    ],
+    "keyPoints": [
+      "EventEmitterModule.forRoot() 注册声明式监听器，且默认是全局模块",
+      "注入 EventEmitter2 调用 emit 方法派发事件",
+      "@OnEvent('order.created') 装饰方法即可订阅对应事件",
+      "事件解耦发送方与多个互不依赖的监听方",
+      "@OnEvent 选项支持 async、prependListener、suppressErrors",
+      "wildcard 与 delimiter 支持 order.* 和 ** 通配符",
+      "waitUntilReady() 避免启动期派发的事件丢失"
+    ],
+    "snippets": [
+      {
+        "title": "派发与监听订单事件",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { EventEmitter2, OnEvent } from '@nestjs/event-emitter';\n\nexport class OrderCreatedEvent {\n  constructor(\n    public readonly orderId: number,\n    public readonly payload: object,\n  ) {}\n}\n\n@Injectable()\nexport class OrdersService {\n  constructor(private readonly eventEmitter: EventEmitter2) {}\n\n  create(orderId: number) {\n    this.eventEmitter.emit('order.created', new OrderCreatedEvent(orderId, {}));\n  }\n}\n\n@Injectable()\nexport class OrderListener {\n  @OnEvent('order.created', { async: true })\n  handleOrderCreatedEvent(event: OrderCreatedEvent) {\n    // 处理订单创建后的副作用\n  }\n}"
+      },
+      {
+        "title": "启动期等待监听器就绪",
+        "lang": "typescript",
+        "code": "import { Injectable, OnApplicationBootstrap } from '@nestjs/common';\nimport { EventEmitter2, EventEmitterReadinessWatcher } from '@nestjs/event-emitter';\n\n@Injectable()\nexport class BootstrapService implements OnApplicationBootstrap {\n  constructor(\n    private readonly watcher: EventEmitterReadinessWatcher,\n    private readonly eventEmitter: EventEmitter2,\n  ) {}\n\n  async onApplicationBootstrap() {\n    await this.watcher.waitUntilReady();\n    this.eventEmitter.emit('app.ready', { at: Date.now() });\n  }\n}"
+      }
+    ],
+    "api": [
+      "EventEmitterModule",
+      "EventEmitter2",
+      "@OnEvent()",
+      "EventEmitterReadinessWatcher",
+      "waitUntilReady()"
+    ],
+    "pitfalls": [
+      "在构造器或 onModuleInit 派发的事件可能丢失，监听器要更晚才注册",
+      "未开启 wildcard 时 order.* 不按通配符匹配，需在 forRoot() 中开启",
+      "请求作用域监听器每次事件新建实例，注入 REQUEST 得到的是事件载荷"
+    ],
+    "enterprise": "领域事件用于解耦订单、通知、审计等模块；事件类集中定义并带版本字段，监听器保持幂等且不阻塞主流程；跨进程或需可靠投递的场景改用消息队列而非进程内事件。",
+    "related": [
+      "fundamentals/lifecycle-events",
+      "application/queues",
+      "fundamentals/injection-scopes"
+    ]
+  },
+  {
+    "id": "application/task-scheduling",
+    "titleZh": "任务调度",
+    "summary": "任务调度让方法按固定时刻、周期或延迟执行。@nestjs/schedule 集成 cron 包：@Cron() 声明 cron 任务，支持 CronExpression 枚举、Date、时区、waitForCompletion 等选项；@Interval() 与 @Timeout() 声明周期和一次性任务；SchedulerRegistry 可动态增删查任务，多实例部署还需避免重复执行。",
+    "sections": [
+      {
+        "heading": "声明式任务",
+        "text": "导入 ScheduleModule.forRoot() 后任务在 onApplicationBootstrap 启动，只能在一个模块调用，否则重复注册。@Cron('45 * * * * *') 支持 cron 表达式、CronExpression 枚举与 Date 单次执行；@Interval() 与 @Timeout() 分别封装定时器 API。"
+      },
+      {
+        "heading": "Cron 选项与控制",
+        "text": "@Cron 第二参数支持 name、timeZone、waitForCompletion、disabled。注入 SchedulerRegistry 后用 getCronJob(name) 取 CronJob，可 stop()、start()；addCronJob()、deleteCronJob()、getCronJobs() 支持增删查。"
+      },
+      {
+        "heading": "动态任务管理",
+        "text": "注册表统一管理 interval、timeout：getInterval()/deleteInterval()/getIntervals() 与 getTimeout()/deleteTimeout()/getTimeouts() 读写句柄，addInterval()/addTimeout() 注册运行时任务；给任务传 name 才能从外部控制。"
+      },
+      {
+        "heading": "多实例与可观测",
+        "text": "调度器在每个进程都会执行任务，三副本部署会把同一任务跑三遍。给 @Cron()、@Interval()、@Timeout() 添加 @nestjs/locks 的 @OnOneInstance({ key })，实例通过共享锁存储选主，只有持有租约的实例执行；长任务再加 @WithoutOverlapping() 并做静默告警。"
+      }
+    ],
+    "keyPoints": [
+      "ScheduleModule.forRoot() 只能导入一次，任务在启动引导时开始",
+      "@Cron(表达式或 Date, options) 声明周期或一次性定时任务",
+      "@Interval() 与 @Timeout() 对应 setInterval 与 setTimeout",
+      "CronExpression 枚举提供常用表达式，如 EVERY_30_SECONDS",
+      "SchedulerRegistry 动态增删查 cron、interval、timeout 任务",
+      "多副本用 @OnOneInstance() 保证每轮只在一个实例上执行"
+    ],
+    "snippets": [
+      {
+        "title": "声明 cron 任务并动态停止",
+        "lang": "typescript",
+        "code": "import { Injectable, Logger } from '@nestjs/common';\nimport { Cron, SchedulerRegistry } from '@nestjs/schedule';\n\n@Injectable()\nexport class TasksService {\n  private readonly logger = new Logger(TasksService.name);\n\n  constructor(private readonly schedulerRegistry: SchedulerRegistry) {}\n\n  @Cron('45 * * * * *', { name: 'cleanup' })\n  handleCron() {\n    this.logger.debug('Called when the current second is 45');\n  }\n\n  stopCleanup() {\n    const job = this.schedulerRegistry.getCronJob('cleanup');\n    job.stop();\n    this.logger.log(`last run: ${job.lastDate()}`);\n  }\n}"
+      },
+      {
+        "title": "动态注册 interval 任务",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { SchedulerRegistry } from '@nestjs/schedule';\n\n@Injectable()\nexport class IntervalsService {\n  constructor(private readonly schedulerRegistry: SchedulerRegistry) {}\n\n  addInterval(name: string, milliseconds: number) {\n    const callback = () => console.log(`Interval ${name} executing`);\n    const interval = setInterval(callback, milliseconds);\n    this.schedulerRegistry.addInterval(name, interval);\n  }\n\n  listIntervals() {\n    this.schedulerRegistry.getIntervals().forEach((key) => console.log(key));\n  }\n}"
+      }
+    ],
+    "api": [
+      "ScheduleModule",
+      "@Cron()",
+      "@Interval()",
+      "@Timeout()",
+      "CronExpression",
+      "SchedulerRegistry",
+      "CronJob"
+    ],
+    "pitfalls": [
+      "多个模块重复调用 ScheduleModule.forRoot() 会让每个任务重复注册执行",
+      "任务默认在每个实例都运行，多副本必须用 @OnOneInstance() 或分布式锁",
+      "只有传入 name 的声明式任务才能通过 SchedulerRegistry 从外部控制"
+    ],
+    "enterprise": "定时任务集中放在 scheduling/ 模块并统一命名，用 SchedulerRegistry 管理生命周期；多副本配合 @OnOneInstance()，长任务加 @WithoutOverlapping()，关键任务配置静默告警。",
+    "related": [
+      "application/queues",
+      "reliability/locks",
+      "fundamentals/lifecycle-events"
+    ]
+  }
+]

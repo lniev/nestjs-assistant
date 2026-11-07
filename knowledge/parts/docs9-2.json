@@ -1,0 +1,369 @@
+[
+  {
+    "id": "microservices/grpc",
+    "titleZh": "gRPC",
+    "summary": "gRPC 是基于 Protocol Buffers 的高性能 RPC 框架，Nest 用 .proto 文件动态绑定客户端与服务端。本章覆盖 Transport.GRPC 选项、@GrpcMethod() 的服务名与方法名约定、ClientGrpc.getService() 获取代理、GrpcException 与 GrpcExceptionFilter 的状态码映射、反射、健康检查、四种流式处理以及 Metadata 读写。",
+    "sections": [
+      {
+        "heading": "选项与服务端",
+        "text": "options 需 package 与 protoPath；url 默认 localhost:5000，protoLoader 默认 @grpc/proto-loader，credentials 默认不安全连接。非 TS 资源要在 nest-cli.json 配 assets 与 watchAssets 才会拷进 dist。"
+      },
+      {
+        "heading": "GrpcMethod 约定",
+        "text": "@GrpcMethod(service, method) 省略 method 时用首字母大写的处理器名匹配 rpc；两者都省略时用定义处理器的类名匹配服务名。处理器接收 data、metadata 与 call，可用 call.sendMetadata() 回传元数据。"
+      },
+      {
+        "heading": "客户端与流式",
+        "text": "客户端用 ClientGrpc，getService<HeroesService>('HeroesService') 取得代理，方法名转小驼峰。@GrpcStreamMethod() 须返回 Observable 处理双工流，@GrpcStreamCall() 直接操作 ServerDuplexStream 或使用 callback。"
+      },
+      {
+        "heading": "异常与可观测",
+        "text": "普通 RpcException 不带状态码，客户端只会收到 UNKNOWN；v12 起提供 GrpcException、GrpcStatus 与各状态专用异常类，配合 GrpcExceptionFilter 输出正确状态。onLoadPackageDefinition 钩子可挂反射与健康检查。"
+      }
+    ],
+    "keyPoints": [
+      "gRPC 传输器需装 @grpc/grpc-js 与 @grpc/proto-loader",
+      "options 必填 package 与 protoPath，url 默认 localhost:5000",
+      "@GrpcMethod() 省略参数时按方法名或类名匹配 .proto",
+      "客户端用 ClientGrpc.getService() 取得服务代理",
+      "GrpcException 配 GrpcExceptionFilter 才能返回正确状态码",
+      "@GrpcStreamMethod() 处理双工流须返回 Observable",
+      "onLoadPackageDefinition 钩子可挂载反射与健康检查"
+    ],
+    "snippets": [
+      {
+        "title": "实现 gRPC 服务方法",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class HeroesController {\n  @GrpcMethod('HeroesService', 'FindOne')\n  findOne(\n    data: HeroById,\n    metadata: Metadata,\n    call: ServerUnaryCall<any, any>,\n  ): Hero {\n    const items = [\n      { id: 1, name: 'John' },\n      { id: 2, name: 'Doe' },\n    ];\n    return items.find(({ id }) => id === data.id);\n  }\n}"
+      },
+      {
+        "title": "抛出带状态码的 gRPC 异常",
+        "lang": "typescript",
+        "code": "import {\n  GrpcAlreadyExistsException,\n  GrpcException,\n  GrpcExceptionFilter,\n  GrpcStatus,\n} from '@nestjs/microservices';\n\n@GrpcMethod('HeroesService')\ncreate(data: Hero): Hero {\n  if (this.heroes.has(data.id)) {\n    throw new GrpcAlreadyExistsException('Hero already exists');\n  }\n  if (!data.name) {\n    throw new GrpcException('Name required', GrpcStatus.INVALID_ARGUMENT);\n  }\n  return this.heroes.add(data);\n}\n\n// main.ts：注册后客户端收到 ALREADY_EXISTS 而非 UNKNOWN\napp.useGlobalFilters(new GrpcExceptionFilter());"
+      }
+    ],
+    "api": [
+      "Transport.GRPC",
+      "@GrpcMethod()",
+      "ClientGrpc",
+      "getService()",
+      "@GrpcStreamMethod()",
+      "@GrpcStreamCall()",
+      "GrpcException",
+      "GrpcStatus",
+      "GrpcExceptionFilter",
+      "Metadata"
+    ],
+    "pitfalls": [
+      "忘记在 nest-cli.json 配 assets，构建后 dist 里没有 .proto 会启动失败",
+      "抛普通 RpcException 不带 code，客户端只会收到 UNKNOWN",
+      "gRPC 客户端默认不发送名称含下划线的字段，需开启 loader.keepCase"
+    ],
+    "enterprise": "内部服务间同步调用用 gRPC 换取性能与强类型契约，把 .proto 抽成共享包统一版本；注册 GrpcExceptionFilter 与健康检查、反射，便于 K8s 探针和调试工具接入。",
+    "related": [
+      "microservices/basics",
+      "microservices/kafka",
+      "microservices/custom-transport"
+    ]
+  },
+  {
+    "id": "microservices/custom-transport",
+    "titleZh": "自定义传输器",
+    "summary": "内置传输器之外，Nest 提供扩展点：实现 CustomTransportStrategy 并继承 Server 即可接入任意消息系统（如 Google Cloud Pub/Sub），或扩展已有策略（如 ServerRedis）。本章讲 listen() 与 close() 的语义、messageHandlers 的读取与执行、事件错误上报开关，以及继承 ClientProxy 实现自定义客户端。",
+    "sections": [
+      {
+        "heading": "实现服务端策略",
+        "text": "自定义类继承 Server 并实现 CustomTransportStrategy，必须提供 listen(callback) 与 close()；不需要的 on()、unwrap() 可抛未实现。启动时通过 strategy 属性传入实例，替代 transport/options。"
+      },
+      {
+        "heading": "处理器映射表",
+        "text": "Server 启动时把 @MessagePattern() 与 @EventPattern() 注册进 messageHandlers（按 pattern 索引的 Map），值上带 isEventHandler 与 extras。可在 listen() 中取出处理器调用；启用拦截器后处理器被包成 RxJS 流，需 subscribe() 才执行。"
+      },
+      {
+        "heading": "事件错误上报",
+        "text": "事件处理器没有响应流，异常默认由 Nest 在异常过滤器之后记录。若底层客户端库已自行上报（如 ServerKafka 交给 kafkajs），把 propagatesEventHandlerErrors 设为 true 可避免重复记录。"
+      },
+      {
+        "heading": "客户端与序列化",
+        "text": "自定义客户端继承 ClientProxy，实现 connect()、close()、publish()、dispatchEvent()、unwrap()；请求-响应走 publish() 并通过 callback 回传 WritePacket。子类可覆写 serializeError() 并用 customClass 注册。"
+      }
+    ],
+    "keyPoints": [
+      "自定义策略需继承 Server 并实现 CustomTransportStrategy",
+      "提供 listen(callback) 与 close() 两个必需方法",
+      "用 strategy 属性传入自定义 Server 实例",
+      "messageHandlers 是按 pattern 索引的处理器 Map",
+      "启用拦截器后处理器返回 RxJS 流，需 subscribe()",
+      "propagatesEventHandlerErrors = true 避免重复上报事件错误",
+      "自定义客户端继承 ClientProxy 并实现 publish/dispatchEvent"
+    ],
+    "snippets": [
+      {
+        "title": "自定义 Server 策略",
+        "lang": "typescript",
+        "code": "import { CustomTransportStrategy, Server } from '@nestjs/microservices';\n\nclass GoogleCloudPubSubServer\n  extends Server\n  implements CustomTransportStrategy\n{\n  listen(callback: () => void) {\n    // 建立连接并注册订阅者\n    console.log(this.messageHandlers);\n    callback();\n  }\n\n  close() {\n    // 取消订阅并关闭连接\n  }\n\n  on(event: string, callback: Function) {\n    throw new Error('Method not implemented.');\n  }\n\n  unwrap<T = never>(): T {\n    throw new Error('Method not implemented.');\n  }\n}\n\nconst app = await NestFactory.createMicroservice(AppModule, {\n  strategy: new GoogleCloudPubSubServer(),\n});"
+      },
+      {
+        "title": "自定义客户端代理",
+        "lang": "typescript",
+        "code": "import { ClientProxy, ReadPacket, WritePacket } from '@nestjs/microservices';\n\nclass GoogleCloudPubSubClient extends ClientProxy {\n  async connect(): Promise<any> {}\n\n  async close() {}\n\n  async dispatchEvent(packet: ReadPacket<any>): Promise<any> {\n    console.log('event to dispatch: ', packet);\n  }\n\n  publish(\n    packet: ReadPacket<any>,\n    callback: (packet: WritePacket<any>) => void,\n  ): () => void {\n    setTimeout(() => callback({ response: packet.data, isDisposed: true }), 5000);\n    return () => console.log('teardown');\n  }\n\n  unwrap<T = never>(): T {\n    throw new Error('Method not implemented.');\n  }\n}"
+      }
+    ],
+    "api": [
+      "CustomTransportStrategy",
+      "Server",
+      "ClientProxy",
+      "ReadPacket",
+      "WritePacket",
+      "messageHandlers",
+      "propagatesEventHandlerErrors",
+      "customClass",
+      "strategy"
+    ],
+    "pitfalls": [
+      "listen() 必须调用 callback()，否则 createMicroservice() 就绪流程会挂起",
+      "启用拦截器后直接调用处理器只拿到流，忘记 subscribe() 业务不执行",
+      "customClass 传类本身而非实例，Nest 负责实例化并注入 options"
+    ],
+    "enterprise": "只在接入 Kafka/Redis 之外的消息系统或扩展 QoS 等特性时自建传输器；把策略与客户端封装成内部包，统一错误上报与追踪埋点后再复用。",
+    "related": [
+      "microservices/basics",
+      "microservices/grpc",
+      "microservices/kafka"
+    ]
+  },
+  {
+    "id": "microservices/exception-filters",
+    "titleZh": "异常过滤器",
+    "summary": "微服务异常过滤层与 HTTP 版几乎一致，区别是应抛 RpcException 而非 HttpException。Nest 会把异常转成 { status: 'error', message } 结构返回；过滤器 catch() 必须返回 Observable，可用 @Catch(RpcException) 实现 RpcExceptionFilter，或继承 BaseRpcExceptionFilter 复用默认行为。",
+    "sections": [
+      {
+        "heading": "异常与错误结构",
+        "text": "处理器抛出 RpcException('Invalid credentials.') 后，Nest 捕获并返回 { status: 'error', message: 'Invalid credentials.' }；若构造时传入对象而非字符串，Nest 原样返回该对象，客户端据此解析错误。"
+      },
+      {
+        "heading": "编写过滤器",
+        "text": "微服务过滤器与 HTTP 过滤器写法一致，但 catch() 必须返回 Observable，通常用 throwError(() => exception.getError())。可方法级 @UseFilters(new ExceptionFilter())、控制器级或全局注册。"
+      },
+      {
+        "heading": "继承与事件处理器",
+        "text": "需要保留默认行为时继承 BaseRpcExceptionFilter 并调用 super.catch()，再叠加自己的逻辑。事件处理器没有响应流，过滤器里重新抛出的错误无法到达生产者，必须在过滤器内部处理掉。"
+      }
+    ],
+    "keyPoints": [
+      "微服务应抛 RpcException，客户端收到 status 与 message",
+      "传给构造函数的对象会被原样返回，可承载错误体",
+      "微服务过滤器 catch() 必须返回 Observable",
+      "@Catch(RpcException) 配 RpcExceptionFilter 捕获异常",
+      "继承 BaseRpcExceptionFilter 可复用默认转换逻辑",
+      "hybrid 应用需 inheritAppConfig 才继承 HTTP 全局过滤器",
+      "事件处理器没有响应流，过滤器不能靠重抛上报错误"
+    ],
+    "snippets": [
+      {
+        "title": "RpcException 过滤器",
+        "lang": "typescript",
+        "code": "import { Catch, RpcExceptionFilter, ArgumentsHost } from '@nestjs/common';\nimport { Observable, throwError } from 'rxjs';\nimport { RpcException } from '@nestjs/microservices';\n\n@Catch(RpcException)\nexport class ExceptionFilter implements RpcExceptionFilter<RpcException> {\n  catch(exception: RpcException, host: ArgumentsHost): Observable<any> {\n    return throwError(() => exception.getError());\n  }\n}\n\n@Controller()\nexport class MathController {\n  @UseFilters(new ExceptionFilter())\n  @MessagePattern({ cmd: 'sum' })\n  accumulate(data: number[]): number {\n    if (!data) throw new RpcException('Invalid credentials.');\n    return data.reduce((a, b) => a + b);\n  }\n}"
+      }
+    ],
+    "api": [
+      "RpcException",
+      "RpcExceptionFilter",
+      "@Catch()",
+      "BaseRpcExceptionFilter",
+      "ArgumentsHost",
+      "throwError()",
+      "@UseFilters()",
+      "inheritAppConfig"
+    ],
+    "pitfalls": [
+      "在微服务里抛 HttpException，客户端只会收到通用 Internal server error",
+      "过滤器 catch() 返回普通值而非 Observable 会类型不匹配",
+      "hybrid 应用的 HTTP 全局过滤器默认不作用于连接的微服务"
+    ],
+    "enterprise": "统一用 RpcException 加错误码枚举，配合全局过滤器把业务错误映射成稳定结构；事件处理器内部自行记录并落盘失败消息，避免静默丢失。",
+    "related": [
+      "exception-filters",
+      "microservices/pipes",
+      "faq/hybrid-application",
+      "microservices/guards"
+    ]
+  },
+  {
+    "id": "microservices/pipes",
+    "titleZh": "管道",
+    "summary": "微服务管道与普通管道行为一致，唯一区别是应抛 RpcException 而非 HttpException；未自定义过滤器时抛 HttpException 只会以通用 Internal server error 返回客户端。ValidationPipe 可通过 exceptionFactory 改抛 RpcException，@Payload() 也支持 schema 选项配合 StandardSchemaValidationPipe。",
+    "sections": [
+      {
+        "heading": "与普通管道的差异",
+        "text": "管道职责（转换与校验）不变，但异常类型必须是 RpcException。若在消息处理中抛 HttpException 且没有自定义过滤器处理，客户端只会收到通用的 Internal server error，丢失具体原因。"
+      },
+      {
+        "heading": "校验管道定制",
+        "text": "给 ValidationPipe 传 exceptionFactory 返回 RpcException，即可让校验失败时抛出客户端可识别的错误；绑定方式与 HTTP 相同，可方法级 @UsePipes() 或控制器级。"
+      },
+      {
+        "heading": "Schema 校验",
+        "text": "@Payload({ schema }) 可接收 Standard Schema 兼容 schema（如 Zod），由 @nestjs/common 的 StandardSchemaValidationPipe 校验；同样配置 exceptionFactory 让问题列表以 RpcException 抛出。"
+      }
+    ],
+    "keyPoints": [
+      "微服务管道应抛 RpcException，抛 HttpException 只得到通用错误",
+      "ValidationPipe 的 exceptionFactory 可改抛 RpcException",
+      "@Payload({ schema }) 支持 Standard Schema 校验",
+      "StandardSchemaValidationPipe 由 @nestjs/common 导出",
+      "管道可用 @UsePipes() 绑定在方法或控制器上",
+      "hybrid 应用需 inheritAppConfig 才继承 HTTP 全局管道"
+    ],
+    "snippets": [
+      {
+        "title": "管道抛 RpcException",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class MathController {\n  @UsePipes(\n    new ValidationPipe({\n      exceptionFactory: (errors) => new RpcException(errors),\n    }),\n  )\n  @MessagePattern({ cmd: 'sum' })\n  accumulate(@Payload() data: number[]): number {\n    return (data || []).reduce((a, b) => a + b, 0);\n  }\n}"
+      },
+      {
+        "title": "用 Zod 校验 payload",
+        "lang": "typescript",
+        "code": "import { z } from 'zod';\nimport { StandardSchemaValidationPipe } from '@nestjs/common';\nimport { RpcException } from '@nestjs/microservices';\n\nconst sumSchema = z.array(z.number());\n\n@Controller()\nexport class MathController {\n  @UsePipes(\n    new StandardSchemaValidationPipe({\n      exceptionFactory: (issues) => new RpcException(issues),\n    }),\n  )\n  @MessagePattern({ cmd: 'sum' })\n  accumulate(@Payload({ schema: sumSchema }) data: number[]): number {\n    return data.reduce((a, b) => a + b, 0);\n  }\n}"
+      }
+    ],
+    "api": [
+      "RpcException",
+      "ValidationPipe",
+      "exceptionFactory",
+      "StandardSchemaValidationPipe",
+      "@Payload()",
+      "@UsePipes()",
+      "schema",
+      "inheritAppConfig"
+    ],
+    "pitfalls": [
+      "沿用 ValidationPipe 默认行为，客户端只收到通用校验错误",
+      "忘记给 @Payload({ schema }) 配 exceptionFactory，错误无法序列化返回",
+      "hybrid 应用的全局管道默认不作用于微服务端"
+    ],
+    "enterprise": "把校验逻辑收敛到共享 DTO 与 Standard Schema，微服务端统一用 RpcException 包装校验错误，网关再翻译成 HTTP 状态码，保证错误语义一致。",
+    "related": [
+      "pipes",
+      "microservices/exception-filters",
+      "application/validation",
+      "microservices/guards"
+    ]
+  },
+  {
+    "id": "microservices/pre-request-hooks",
+    "titleZh": "预请求钩子",
+    "summary": "预请求钩子在每次模式处理器调用前、所有增强器之前执行，是微服务里对应 HTTP 中间件的位置，用于建立守卫与整条管线都可见的每请求上下文。通过 app.registerPreRequestHook() 注册，钩子接收 ExecutionContext 与 next，必须返回 Observable。",
+    "sections": [
+      {
+        "heading": "执行顺序与注册",
+        "text": "顺序为入站消息 → 预请求钩子（按注册顺序）→ 守卫 → 拦截器 → 管道 → 处理器。必须在 app.listen()/init() 之前调用 registerPreRequestHook()，初始化之后注册会被忽略并打警告；多次调用按顺序累积。"
+      },
+      {
+        "heading": "钩子契约",
+        "text": "每个钩子接收 ExecutionContext 与 next，调用 next() 才进入下一个钩子或守卫管线；必须返回 Observable，可直接返回 next() 或包裹它。不调用 next() 则处理器永不执行，与 HTTP 中间件契约相同。"
+      },
+      {
+        "heading": "上下文与埋点",
+        "text": "常见用法是在 new Observable 中执行 als.run(store, () => next().subscribe(subscriber))，让守卫、拦截器与处理器都能读到 als.getStore()；也可对 next() 的流套 tap 与 catchError 记录耗时与失败。"
+      }
+    ],
+    "keyPoints": [
+      "预请求钩子在守卫、拦截器、管道之前按注册顺序执行",
+      "用 app.registerPreRequestHook() 注册，须在 listen() 之前",
+      "钩子接收 ExecutionContext 与 next，必须返回 Observable",
+      "不调用 next() 处理器不会执行，与 HTTP 中间件契约一致",
+      "常见用法是为整条管线初始化 AsyncLocalStorage 上下文",
+      "钩子抛出的异常由现有微服务异常过滤器处理",
+      "钩子全局生效，不能按 pattern 注册，也不作用于 WebSocket"
+    ],
+    "snippets": [
+      {
+        "title": "注册上下文钩子",
+        "lang": "typescript",
+        "code": "import { Observable } from 'rxjs';\nimport { AsyncLocalStorage } from 'node:async_hooks';\nimport { randomUUID } from 'node:crypto';\n\nexport const als = new AsyncLocalStorage<{ correlationId: string }>();\n\nconst app = await NestFactory.createMicroservice<MicroserviceOptions>(\n  AppModule,\n  { transport: Transport.TCP },\n);\n\napp.registerPreRequestHook((ctx, next) => {\n  return new Observable((subscriber) => {\n    als.run({ correlationId: randomUUID() }, () => {\n      next().subscribe(subscriber);\n    });\n  });\n});\n\nawait app.listen();"
+      },
+      {
+        "title": "记录处理器耗时",
+        "lang": "typescript",
+        "code": "app.registerPreRequestHook((ctx, next) => {\n  const handler = ctx.getHandler().name;\n  const start = Date.now();\n\n  return next().pipe(\n    tap(() => console.log(`[${handler}] completed in ${Date.now() - start}ms`)),\n    catchError((err) => {\n      console.error(`[${handler}] failed:`, err.message);\n      return throwError(() => err);\n    }),\n  );\n});"
+      }
+    ],
+    "api": [
+      "registerPreRequestHook()",
+      "PreRequestHook",
+      "ExecutionContext",
+      "next()",
+      "Observable",
+      "AsyncLocalStorage",
+      "deferInitialization"
+    ],
+    "pitfalls": [
+      "在 listen() 之后注册钩子会被静默忽略，只留一条警告日志",
+      "钩子忘记调用 next()，请求会静默卡住且处理器不执行",
+      "hybrid 应用 connectMicroservice() 立即初始化，之后注册的钩子无效"
+    ],
+    "enterprise": "把 correlationId、租户与用户身份放进预请求钩子的 AsyncLocalStorage，让日志与追踪自动携带上下文；全局只注册一次，避免重复订阅。",
+    "related": [
+      "microservices/basics",
+      "microservices/guards",
+      "recipes/async-local-storage",
+      "observability/distributed-tracing"
+    ]
+  },
+  {
+    "id": "microservices/guards",
+    "titleZh": "守卫",
+    "summary": "微服务守卫与 HTTP 守卫用法完全相同：实现 CanActivate、返回布尔值或 Promise/Observable，在处理器之前决定消息是否放行。区别是守卫应抛 RpcException 而非 HttpException；返回 false 时 Nest 抛出的 RpcException 消息为 Forbidden resource。",
+    "sections": [
+      {
+        "heading": "行为与异常类型",
+        "text": "守卫在处理器之前执行，返回 false 时 Nest 自动抛 RpcException('Forbidden resource')；自定义拒绝逻辑应抛 RpcException 以携带明确信息，因为 HTTP 异常在微服务里无法正确序列化给客户端。"
+      },
+      {
+        "heading": "绑定方式",
+        "text": "与 HTTP 一致，可方法级 @UseGuards(AuthGuard) 或控制器级；守卫里可用 @Ctx() 或 ExecutionContext.switchToRpc() 拿到消息上下文与数据做鉴权。"
+      }
+    ],
+    "keyPoints": [
+      "微服务守卫与 HTTP 守卫机制相同，返回 false 即拒绝",
+      "守卫返回 false 时 Nest 抛 RpcException，消息为 Forbidden resource",
+      "守卫应抛 RpcException 而非 HttpException",
+      "用 @UseGuards() 绑定在方法或控制器上",
+      "可通过 ExecutionContext.switchToRpc() 读取消息数据",
+      "hybrid 应用需 inheritAppConfig 才继承 HTTP 全局守卫"
+    ],
+    "snippets": [
+      {
+        "title": "方法级与控制器级绑定",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class MathController {\n  @UseGuards(AuthGuard)\n  @MessagePattern({ cmd: 'sum' })\n  accumulate(@Payload() data: number[]): number {\n    return (data || []).reduce((a, b) => a + b);\n  }\n}\n\n@UseGuards(AuthGuard)\n@Controller('cats')\nexport class CatsController {}"
+      },
+      {
+        "title": "自定义守卫抛 RpcException",
+        "lang": "typescript",
+        "code": "import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';\nimport { RpcException } from '@nestjs/microservices';\n\n@Injectable()\nexport class AuthGuard implements CanActivate {\n  canActivate(context: ExecutionContext): boolean {\n    const data = context.switchToRpc().getData<{ token?: string }>();\n    if (!data?.token) {\n      throw new RpcException('Missing credentials');\n    }\n    return true;\n  }\n}"
+      }
+    ],
+    "api": [
+      "CanActivate",
+      "@UseGuards()",
+      "RpcException",
+      "ExecutionContext",
+      "switchToRpc()",
+      "inheritAppConfig"
+    ],
+    "pitfalls": [
+      "在守卫里抛 HttpException，客户端只会收到通用 Internal server error",
+      "全局守卫注册在 HTTP 应用上，hybrid 模式不会自动作用于微服务",
+      "守卫返回 false 只有默认文案，需区分原因时应自行抛 RpcException"
+    ],
+    "enterprise": "鉴权逻辑抽成共享守卫，从消息 payload 或 gRPC metadata 读取令牌校验；拒绝时抛带错误码的 RpcException，便于网关转换成 HTTP 状态码。",
+    "related": [
+      "guards",
+      "microservices/exception-filters",
+      "microservices/interceptors",
+      "security/authorization"
+    ]
+  }
+]

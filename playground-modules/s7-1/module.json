@@ -1,0 +1,65 @@
+{
+  "id": "s7-1",
+  "itemId": "s7-1",
+  "stageId": "s7",
+  "stageIndex": 7,
+  "itemIndex": 1,
+  "stageTitleZh": "企业级架构与可靠性",
+  "titleZh": "队列、异步任务与调度",
+  "title": "队列、异步任务与调度",
+  "level": "L4",
+  "goal": "用 BullMQ 把耗时任务移出请求链路，配置重试、退避与失败队列，用锁保证定时任务单实例。",
+  "practice": "在操练场创建 report 队列，注入失败任务，观察 attempts 与 backoff。",
+  "deliverable": "报表队列、定时对账任务与失败重试配置",
+  "accept": "接口 P95 不因报表变慢，消费者重启后任务不重复执行",
+  "minutes": 360,
+  "pageIds": [
+    "application/queues",
+    "application/task-scheduling",
+    "reliability/locks"
+  ],
+  "summary": "内存版 BullMQ：POST /queue/report 入队即返回 202，消费者异步执行报表；任务带 attempts/maxAttempts/指数 backoff，失败先 delayed 再重试、超限进 failed；/queue/tick 手动消费便于观察；/schedule/reconcile 用内存锁演示定时对账单实例执行。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/queue/report",
+      "expect": 202
+    },
+    {
+      "method": "GET",
+      "path": "/queue/jobs",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/queue/jobs/1",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/queue/tick",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/queue/stats",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/schedule/status",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/schedule/reconcile",
+      "expect": 200
+    }
+  ]
+}

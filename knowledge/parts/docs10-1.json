@@ -1,0 +1,361 @@
+[
+  {
+    "id": "recipes/repl",
+    "titleZh": "REPL（交互式命令行）",
+    "summary": "这一页说明如何把 Nest 应用以 REPL 模式启动，在终端里直接查询依赖图、调用 provider 与 controller 的方法。核心是 @nestjs/core 导出的 repl() 函数：它接收根模块并返回 Node.js REPL server，启动后可用的原生函数包括 get/$、resolve、select、methods、debug 与 help。适合调试、排查依赖注入问题和探索模块结构。",
+    "sections": [
+      {
+        "heading": "启动 REPL",
+        "text": "在 main.ts 旁新增 repl.ts，调用 repl(AppModule)；用 npm run start -- --entryFile repl 启动。repl() 返回 Promise，解析为 Node.js REPL server，可把 Node REPL 选项作为第二个参数传入，启动日志会打印 REPL initialized。"
+      },
+      {
+        "heading": "原生函数",
+        "text": "启动后 help() 列出内置函数，<fn>.help 查看签名。get/$ 取 provider 或 controller 实例，resolve 解析 transient 或 request-scoped 实例，select 在模块树中导航，methods 列出公开方法，debug 打印已注册模块及其 controllers/providers。"
+      },
+      {
+        "heading": "监听模式与历史",
+        "text": "加 --watch 可在改动后自动重载，但 REPL 的命令历史会丢失；用 replServer.setupHistory('.nestjs_repl_history', cb) 把历史落盘，即可在多次运行与重载之间保留。"
+      }
+    ],
+    "keyPoints": [
+      "用 `repl(AppModule)` 启动，入口由 `--entryFile repl` 指定",
+      "`npm run start -- --entryFile repl` 即可进入交互式终端",
+      "`get()`（别名 `$`）按 token 获取 provider 或 controller 实例",
+      "`resolve()` 取 request-scoped 实例，需要 contextId",
+      "`select()` 在模块树中导航并返回 `INestApplicationContext`",
+      "`debug()` 打印模块与 providers，`methods()` 列出方法",
+      "watch 模式下用 `setupHistory()` 持久化 REPL 命令历史"
+    ],
+    "snippets": [
+      {
+        "title": "REPL 入口文件",
+        "lang": "typescript",
+        "code": "import { repl } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  // returns a Node.js REPL server, so history can be persisted\n  const replServer = await repl(AppModule);\n  replServer.setupHistory('.nestjs_repl_history', (err) => {\n    if (err) {\n      console.error(err);\n    }\n  });\n}\n\nawait bootstrap();"
+      },
+      {
+        "title": "常用 REPL 命令",
+        "lang": "bash",
+        "code": "$ npm run start -- --entryFile repl\n\n> get(AppService).getHello()\n'Hello World!'\n> appController = get(AppController)\n> methods(AppController)\n\nMethods:\n ◻ getHello\n> debug()"
+      }
+    ],
+    "api": [
+      "repl()",
+      "get()",
+      "resolve()",
+      "select()",
+      "methods()",
+      "debug()",
+      "INestApplicationContext"
+    ],
+    "pitfalls": [
+      "`get()` 只解析已注册的 token，找不到会直接抛异常，不会返回 undefined",
+      "watch 模式下不调用 `setupHistory()`，每次重载都会清空命令历史",
+      "REPL 与业务进程共享资源，生产环境不应以 REPL 方式启动"
+    ],
+    "enterprise": "仅在本地排障或预发环境开启 REPL，用于核对依赖图、手工调用 provider 复现线上问题；把它做成独立的 repl.ts 入口，避免污染 main.ts 的启动路径。",
+    "related": [
+      "fundamentals/module-ref",
+      "fundamentals/discovery-service",
+      "cli/overview"
+    ]
+  },
+  {
+    "id": "recipes/crud-generator",
+    "titleZh": "CRUD 生成器",
+    "summary": "nest g resource 是一个原理图（schematic），一次性生成模块、控制器、服务、实体、DTO 与测试文件，替代手工重复创建资源的样板代码。它支持 HTTP、微服务、GraphQL（code first / schema first）与 WebSocket 传输层，并可选是否生成 CRUD 入口点。生成的 service 不绑定任何 ORM，方法体只是占位实现，需要按项目数据源自行填充。",
+    "sections": [
+      {
+        "heading": "生成资源",
+        "text": "在项目根目录执行 nest g resource 或 nest g resource users，交互式选择传输层与是否生成 CRUD 入口点。命令输出会 CREATE 模块、控制器/解析器、service、dto、entity 与 spec 文件，并 UPDATE app.module.ts 完成装配；--no-spec 可跳过测试文件。"
+      },
+      {
+        "heading": "支持的传输层",
+        "text": "原理图可为 REST 生成 controller，为微服务生成 message handler，为 GraphQL 生成 resolver（code first 或 schema first），为 WebSocket 生成 gateway，并生成对应的 CRUD 占位入口。"
+      },
+      {
+        "heading": "与 ORM 解耦",
+        "text": "生成的服务类不绑定任何具体 ORM 或数据源，所有方法只包含占位实现，需要你按项目所用 TypeORM、Prisma 等填充。这种设计让生成器保持通用，不会把某一种持久化方案强加给项目。"
+      }
+    ],
+    "keyPoints": [
+      "`nest g resource` 一次生成模块、控制器、服务、实体与 DTO",
+      "交互式选择传输层：HTTP、Microservice、GraphQL、WebSocket",
+      "`--no-spec` 跳过测试文件生成",
+      "REST 模板生成 `@Get()`、`@Post()`、`@Patch()` 等占位路由",
+      "GraphQL 生成 `@Resolver()`、`@Query()`、`@Mutation()` 骨架",
+      "生成的 service 不绑定 ORM，方法体为待填充的占位实现",
+      "命令会自动 UPDATE 根模块，把新模块加入 imports"
+    ],
+    "snippets": [
+      {
+        "title": "生成的 REST 控制器",
+        "lang": "typescript",
+        "code": "@Controller('users')\nexport class UsersController {\n  constructor(private readonly usersService: UsersService) {}\n\n  @Post()\n  create(@Body() createUserDto: CreateUserDto) {\n    return this.usersService.create(createUserDto);\n  }\n\n  @Get()\n  findAll() {\n    return this.usersService.findAll();\n  }\n\n  @Get(':id')\n  findOne(@Param('id') id: string) {\n    return this.usersService.findOne(+id);\n  }\n\n  @Patch(':id')\n  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {\n    return this.usersService.update(+id, updateUserDto);\n  }\n\n  @Delete(':id')\n  remove(@Param('id') id: string) {\n    return this.usersService.remove(+id);\n  }\n}"
+      },
+      {
+        "title": "生成命令与输出",
+        "lang": "bash",
+        "code": "$ nest g resource users\n\n> ? What transport layer do you use? REST API\n> ? Would you like to generate CRUD entry points? Yes\n> CREATE src/users/users.module.ts (224 bytes)\n> CREATE src/users/users.controller.ts (1109 bytes)\n> CREATE src/users/users.service.ts (625 bytes)\n> CREATE src/users/dto/create-user.dto.ts (195 bytes)\n> CREATE src/users/entities/user.entity.ts (187 bytes)\n> UPDATE src/app.module.ts (312 bytes)"
+      }
+    ],
+    "api": [
+      "nest g resource",
+      "--no-spec",
+      "@Controller()",
+      "@Resolver()",
+      "@Mutation()",
+      "@Query()"
+    ],
+    "pitfalls": [
+      "生成器不会推断 ORM，service 里全是占位实现，直接上线会返回假数据",
+      "GraphQL 项目要选对 code first 或 schema first，否则生成的文件类型不匹配",
+      "不传资源名会进入交互模式，脚本化 CI 中应显式写 `nest g resource users`"
+    ],
+    "enterprise": "把资源生成器当作统一脚手架：团队在它之上加内部模板与 lint 规则，保证每个新资源的模块边界、DTO 命名和测试骨架一致，再人工补持久化实现。",
+    "related": [
+      "cli/overview",
+      "controllers",
+      "providers",
+      "modules"
+    ]
+  },
+  {
+    "id": "recipes/swc",
+    "titleZh": "SWC（快速编译器）",
+    "summary": "SWC 是基于 Rust 的编译与打包平台，作为 Nest CLI 的 builder 可把 TypeScript 编译速度提升约 20 倍。启用方式是 nest start -b swc 或在 nest-cli.json 中设置 compilerOptions.builder。SWC 不做类型检查，需要 --type-check 让 CLI 并行运行 tsc；页面还覆盖 .swcrc 自定义、monorepo 下的 swc-loader、CLI 插件元数据生成以及 Jest/Vitest 集成。",
+    "sections": [
+      {
+        "heading": "启用 SWC",
+        "text": "安装 @swc/cli 与 @swc/core 后，用 nest start -b swc 启动；也可在 nest-cli.json 的 compilerOptions.builder 写 \"swc\"。传 { type: \"swc\", options } 可指定 swcrcPath 与 extensions。"
+      },
+      {
+        "heading": "类型检查",
+        "text": "SWC 本身不做类型检查。加 --type-check 时，CLI 会在 noEmit 模式下并行运行 tsc；也可设置 compilerOptions.typeCheck 为 true。该标志还会执行 Nest CLI 插件并产出序列化元数据文件，供运行时加载。"
+      },
+      {
+        "heading": "monorepo 与测试",
+        "text": "v12 起 monorepo 默认 Rspack builder（内部已用 SWC）。仍用已废弃的 webpack builder 时需 swc-loader 与自定义配置；CLI 插件不会自动加载，要单独运行 PluginMetadataGenerator。"
+      }
+    ],
+    "keyPoints": [
+      "安装 `@swc/cli` 与 `@swc/core` 后即可使用 `-b swc` builder",
+      "`--type-check` 让 tsc 以 noEmit 模式并行做类型检查",
+      "`builder` 可写成字符串或 `{ type, options }` 对象",
+      "SWC 对循环导入支持差，ORM 关系属性用 `Relation<T>` 包装",
+      "monorepo 的 webpack builder 需 `swc-loader` 与手动元数据生成",
+      "Jest 用 `@swc/jest` transform，Vitest 用 `unplugin-swc` 插件",
+      "输出模块格式跟随 package.json 的 `type`，`.swcrc` 可覆盖"
+    ],
+    "snippets": [
+      {
+        "title": "nest-cli.json 配置",
+        "lang": "json",
+        "code": "{\n  \"compilerOptions\": {\n    \"builder\": {\n      \"type\": \"swc\",\n      \"options\": {\n        \"swcrcPath\": \"infrastructure/.swcrc\",\n        \"extensions\": [\".ts\", \".tsx\", \".js\", \".jsx\"]\n      }\n    },\n    \"typeCheck\": true\n  }\n}"
+      },
+      {
+        "title": "规避循环导入",
+        "lang": "typescript",
+        "code": "@Entity()\nexport class User {\n  @OneToOne(() => Profile, (profile) => profile.user)\n  profile: Relation<Profile>; // avoids saving the type in metadata\n}\n\n// For ORMs without a Relation type\nexport type WrapperType<T> = T;\n\n@Injectable()\nexport class UsersService {\n  constructor(\n    @Inject(forwardRef(() => ProfileService))\n    private readonly profileService: WrapperType<ProfileService>,\n  ) {}\n}"
+      }
+    ],
+    "api": [
+      "swc",
+      "swc-loader",
+      "@swc/jest",
+      "unplugin-swc",
+      "PluginMetadataGenerator",
+      "typeCheck",
+      "swcrcPath"
+    ],
+    "pitfalls": [
+      "SWC 不做类型检查，只开 `-b swc` 会把类型错误带到运行时",
+      "未加 `--type-check` 时 CLI 插件不会执行，Swagger 元数据可能缺失",
+      "ORM 实体属性直接标注类型会触发循环导入，需用 `Relation<T>` 包装"
+    ],
+    "enterprise": "大型项目或 monorepo 可把 SWC 作为默认 builder 缩短冷启动与热编译时间，同时在 CI 单独跑 tsc --noEmit 与 ESLint，保证类型安全不因提速而失守。",
+    "related": [
+      "recipes/hot-reload",
+      "cli/overview",
+      "cli/monorepo",
+      "fundamentals/circular-dependency"
+    ]
+  },
+  {
+    "id": "recipes/passport",
+    "titleZh": "Passport（身份认证）",
+    "summary": "这一章用 @nestjs/passport 封装 Passport，为 REST API 搭建完整的用户名密码加 JWT 认证链路：LocalStrategy 校验凭据，AuthGuard('local') 触发登录，JWT 由 @nestjs/jwt 签发，JwtStrategy 校验 Bearer token 并派生 req.user。还涉及全局守卫、@Public() 放行、扩展守卫、请求作用域策略与 GraphQL 适配。",
+    "sections": [
+      {
+        "heading": "策略实现模式",
+        "text": "任何策略都通过继承 PassportStrategy(Strategy) 实现：构造函数里 super(options) 传策略选项，validate() 实现 verify 回调。local 策略校验用户名密码，jwt 策略用 ExtractJwt 提取并验证 token，返回值会挂到 req.user。"
+      },
+      {
+        "heading": "内置守卫与登录",
+        "text": "@nestjs/passport 提供 AuthGuard，按策略名调用对应策略并完成认证流程。@UseGuards(AuthGuard('local')) 放在 /auth/login 上即可触发登录；推荐继承出 LocalAuthGuard、JwtAuthGuard 子类避免魔法字符串。验证失败抛 UnauthorizedException。"
+      },
+      {
+        "heading": "全局认证与放行",
+        "text": "用 { provide: APP_GUARD, useClass: JwtAuthGuard } 把认证注册为全局守卫；再自定义 @Public() 装饰器（SetMetadata）标记公开路由，并在守卫里用 Reflector.getAllAndOverride 读取 IS_PUBLIC_KEY 后直接返回 true。"
+      },
+      {
+        "heading": "扩展与 GraphQL",
+        "text": "子类可覆写 canActivate 与 handleRequest 定制错误处理，也可传策略数组形成认证链。GraphQL 场景需继承 AuthGuard 并覆写 getRequest()，用 GqlExecutionContext 取 req；local 策略还要把 GraphQL args 合并进 req.body。"
+      }
+    ],
+    "keyPoints": [
+      "任意策略都需要 `@nestjs/passport`、`passport` 与具体策略包",
+      "子类 `super()` 传策略选项，`validate()` 实现 verify 回调",
+      "`AuthGuard('local')` 或 `AuthGuard('jwt')` 按策略名触发认证流程",
+      "`JwtModule.register()` 配置签发，`sign()` 生成 token",
+      "`{ provide: APP_GUARD, useClass: JwtAuthGuard }` 注册全局守卫",
+      "用 `SetMetadata` 定义 `@Public()`，守卫中通过 `Reflector` 放行",
+      "策略在 request-scoped 场景用 `ModuleRef` 动态解析"
+    ],
+    "snippets": [
+      {
+        "title": "Local 与 JWT 策略",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class LocalStrategy extends PassportStrategy(Strategy) {\n  constructor(private authService: AuthService) {\n    super(); // passport-local defaults: username / password\n  }\n\n  async validate(username: string, password: string): Promise<any> {\n    const user = await this.authService.validateUser(username, password);\n    if (!user) {\n      throw new UnauthorizedException();\n    }\n    return user;\n  }\n}\n\n@Injectable()\nexport class JwtStrategy extends PassportStrategy(Strategy) {\n  constructor() {\n    super({\n      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),\n      ignoreExpiration: false,\n      secretOrKey: jwtConstants.secret,\n    });\n  }\n\n  async validate(payload: any) {\n    return { userId: payload.sub, username: payload.username };\n  }\n}"
+      },
+      {
+        "title": "全局守卫与 Public 放行",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class JwtAuthGuard extends AuthGuard('jwt') {\n  constructor(private reflector: Reflector) {\n    super();\n  }\n\n  canActivate(context: ExecutionContext) {\n    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [\n      context.getHandler(),\n      context.getClass(),\n    ]);\n    return isPublic ? true : super.canActivate(context);\n  }\n}"
+      }
+    ],
+    "api": [
+      "PassportStrategy",
+      "AuthGuard()",
+      "JwtModule",
+      "JwtService",
+      "ExtractJwt",
+      "APP_GUARD",
+      "Reflector",
+      "ModuleRef",
+      "ContextIdFactory"
+    ],
+    "pitfalls": [
+      "示例把密码明文存储，生产必须用 bcrypt 等加盐哈希，绝不能照抄",
+      "JWT secret 不能硬编码进仓库，应来自环境变量或密钥管理服务",
+      "Passport 策略是全局单例，标记 request-scoped 不会生效，要用 ModuleRef 动态解析"
+    ],
+    "enterprise": "把认证收敛到独立 AuthModule：统一策略、守卫与 JWT 配置，对外只暴露 AuthService；全局守卫加 @Public() 默认拒绝，密钥由配置中心注入，并配合刷新令牌与吊销列表。",
+    "related": [
+      "security/authentication",
+      "guards",
+      "security/authorization",
+      "fundamentals/module-ref"
+    ]
+  },
+  {
+    "id": "recipes/hot-reload",
+    "titleZh": "热重载",
+    "summary": "webpack HMR 让代码变更时只替换改动的模块，而不必重新编译并重启整个项目，从而显著缩短迭代时间。页面分别给出使用 Nest CLI 与纯 webpack 两种配置：安装 webpack-node-externals、run-script-webpack-plugin，编写 webpack-hmr.config.js，并在 main.ts 中用 module.hot 管理应用生命周期。",
+    "sections": [
+      {
+        "heading": "安装与配置",
+        "text": "用 CLI 时安装 webpack-node-externals、run-script-webpack-plugin 与 webpack，新建 webpack-hmr.config.js：把 webpack/hot/poll?100 加进 entry，externals 放行该路径，并注册三个 HMR 相关插件。"
+      },
+      {
+        "heading": "入口文件改造",
+        "text": "在 main.ts 声明 module，创建应用时传 forceCloseConnections: !!module.hot；监听后调用 module.hot.accept()，并在 dispose 回调里把 app.close() 的 promise 存到 module.hot.data.closePromise，下次启动先 await 它。"
+      },
+      {
+        "heading": "运行与限制",
+        "text": "package.json 加 start:dev 脚本运行 nest build --webpack 并指定 --webpackPath 与 --watch。webpack 不会自动拷贝 .graphql 等资源，也不兼容 TypeOrmModule 的 entities 静态 glob；v12 起 builder 已废弃。"
+      }
+    ],
+    "keyPoints": [
+      "HMR 依赖 `HotModuleReplacementPlugin` 与 hot/poll 入口",
+      "`allowlist` 必须放行 `webpack/hot/poll?100`",
+      "`RunScriptWebpackPlugin` 的 `autoRestart: false` 避免重复拉起",
+      "`module.hot.accept()` 接受更新，`dispose()` 关闭旧实例",
+      "`forceCloseConnections` 防止重载时出现 `EADDRINUSE`",
+      "把 `app.close()` 的 promise 存入 `module.hot.data`",
+      "v12 起 webpack builder 已废弃，monorepo 默认使用 Rspack"
+    ],
+    "snippets": [
+      {
+        "title": "webpack HMR 配置",
+        "lang": "typescript",
+        "code": "const nodeExternals = require('webpack-node-externals');\nconst { RunScriptWebpackPlugin } = require('run-script-webpack-plugin');\n\nmodule.exports = function (options, webpack) {\n  return {\n    ...options,\n    entry: ['webpack/hot/poll?100', options.entry],\n    externals: [\n      nodeExternals({\n        allowlist: ['webpack/hot/poll?100'],\n      }),\n    ],\n    plugins: [\n      ...options.plugins,\n      new webpack.HotModuleReplacementPlugin(),\n      new webpack.WatchIgnorePlugin({\n        paths: [/\\.js$/, /\\.d\\.ts$/],\n      }),\n      new RunScriptWebpackPlugin({ name: options.output.filename, autoRestart: false }),\n    ],\n  };\n};"
+      },
+      {
+        "title": "main.ts 中的 HMR 生命周期",
+        "lang": "typescript",
+        "code": "declare const module: any;\n\nasync function bootstrap() {\n  if (module.hot?.data?.closePromise) {\n    await module.hot.data.closePromise;\n  }\n\n  const app = await NestFactory.create(AppModule, {\n    forceCloseConnections: !!module.hot,\n  });\n  await app.listen(process.env.PORT ?? 3000);\n\n  if (module.hot) {\n    module.hot.accept();\n    module.hot.dispose((data: any) => {\n      data.closePromise = app.close();\n    });\n  }\n}\nbootstrap();"
+      }
+    ],
+    "api": [
+      "HotModuleReplacementPlugin",
+      "RunScriptWebpackPlugin",
+      "WatchIgnorePlugin",
+      "forceCloseConnections",
+      "module.hot.accept()",
+      "module.hot.dispose()"
+    ],
+    "pitfalls": [
+      "webpack 不会自动拷贝 `.graphql` 等资源到 dist，需另配 copy 插件",
+      "`TypeOrmModule` 的 entities 静态 glob 路径与 webpack 不兼容，要显式导入实体",
+      "不 await 上次 closePromise 会导致重载时端口被占用"
+    ],
+    "enterprise": "把 HMR 只用于本地开发，生产仍走 nest build；在 monorepo 中优先 Rspack builder，并把 webpack 配置纳入版本管理，避免各人本地环境行为不一致。",
+    "related": [
+      "recipes/swc",
+      "cli/overview",
+      "deployment"
+    ]
+  },
+  {
+    "id": "recipes/router-module",
+    "titleZh": "路由模块",
+    "summary": "RouterModule 用于在模块级别声明路由前缀，让同一模块内所有控制器自动带上统一前缀，避免在每个 @Controller() 里重复书写。通过 RouterModule.register() 传入 path 与 module，还可用 children 构建层级结构，子模块会递归继承父模块前缀。仅适用于 HTTP 应用，官方提示滥用会让路由难以维护。",
+    "sections": [
+      {
+        "heading": "模块级前缀",
+        "text": "在 AppModule 的 imports 中调用 RouterModule.register([{ path: 'dashboard', module: DashboardModule }])，该模块内所有控制器都会自动加上 /dashboard 前缀。RouterModule 从 @nestjs/core 导出。"
+      },
+      {
+        "heading": "层级路由",
+        "text": "register() 的条目支持 children 数组。父模块声明 path: 'admin'，children 里再挂 dashboard、metrics，则子模块控制器分别得到 /admin/dashboard 与 /admin/metrics；前缀按父子顺序递归拼接。"
+      },
+      {
+        "heading": "使用建议",
+        "text": "该特性适合大型应用中按 Dashboard、Admin 等业务域划分 URL 空间，与 @Controller() 前缀、setGlobalPrefix() 的全局前缀可叠加。官方提醒谨慎使用，过度嵌套会让路由来源难以追踪，维护成本上升。"
+      }
+    ],
+    "keyPoints": [
+      "`RouterModule` 从 `@nestjs/core` 导入，仅适用于 HTTP 应用",
+      "`RouterModule.register()` 为模块内控制器加统一前缀",
+      "`children` 数组可声明子模块，前缀按父到子递归拼接",
+      "模块前缀与控制器 `@Controller()` 前缀、全局前缀依次叠加",
+      "注册模块时通常同时把该模块放进 imports 数组",
+      "过度嵌套会让路由难以追踪，官方建议谨慎使用"
+    ],
+    "snippets": [
+      {
+        "title": "注册层级路由",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [\n    AdminModule,\n    DashboardModule,\n    MetricsModule,\n    RouterModule.register([\n      {\n        path: 'admin',\n        module: AdminModule,\n        children: [\n          { path: 'dashboard', module: DashboardModule },\n          { path: 'metrics', module: MetricsModule },\n        ],\n      },\n    ]),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "RouterModule",
+      "RouterModule.register()",
+      "children",
+      "@Module()"
+    ],
+    "pitfalls": [
+      "忘记把目标模块同时加入 imports，RouterModule 注册不会生效",
+      "层级前缀会逐层拼接，嵌套过深后实际 URL 与直觉不符",
+      "RouterModule 只影响 HTTP 路由，微服务与 GraphQL 场景不适用"
+    ],
+    "enterprise": "按业务域（admin、dashboard、metrics）统一用 RouterModule 规划 URL 空间，配合全局 API 版本前缀，让网关与前端路由约定保持一致，避免各控制器各写前缀。",
+    "related": [
+      "controllers",
+      "faq/global-prefix",
+      "modules",
+      "http/versioning"
+    ]
+  }
+]

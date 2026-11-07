@@ -1,0 +1,64 @@
+{
+  "id": "s7-2",
+  "itemId": "s7-2",
+  "stageId": "s7",
+  "stageIndex": 7,
+  "itemIndex": 2,
+  "stageTitleZh": "企业级架构与可靠性",
+  "titleZh": "事件驱动与 CQRS",
+  "title": "事件驱动与 CQRS",
+  "level": "L4",
+  "goal": "用事件解耦模块副作用，在复杂写模型上引入 CommandBus 与 QueryBus，明确最终一致边界。",
+  "practice": "在操练场把“下单发邮件”改成事件监听，对比接口耗时与失败影响。",
+  "deliverable": "下单事件（扣积分、发通知）与独立查询模型",
+  "accept": "通知失败不影响下单成功，事件处理器有独立单测",
+  "minutes": 300,
+  "pageIds": [
+    "application/events",
+    "recipes/cqrs"
+  ],
+  "summary": "事件驱动 + CQRS 手写版：CommandBus 写订单、QueryBus 读事件投影，NotificationListener/PointsListener 通过 EventBus 订阅 order.created。POST /orders {failNotification:true} 可验证「通知失败不影响下单」，GET /events 查看监听器错误与失败隔离。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "expect": 201
+    },
+    {
+      "method": "GET",
+      "path": "/orders/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/events",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/notifications",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/points",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/commands",
+      "expect": 200
+    }
+  ]
+}

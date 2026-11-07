@@ -1,0 +1,195 @@
+[
+  {
+    "id": "reliability/workflows",
+    "titleZh": "持久化工作流",
+    "summary": "@nestjs/workflows 把需要数天的业务流程写成一个 async 方法：每个副作用都封装为 journaled step，实例、日志、等待与信号都存进应用自己的数据库，重启后从顶部重放并跳过已完成步骤，因此无需独立工作流服务器。它提供步骤重试、补偿、sleep、waitForSignal、子工作流、并发与限流、调度、CQRS 事件集成与版本化部署安全，worker 可内嵌在应用进程中运行。",
+    "sections": [
+      {
+        "heading": "核心模型",
+        "text": "用 @Workflow('name') 装饰实现 WorkflowRunner 的类，run(ctx, input) 中调用 ctx.step(name, fn)：step 先执行并写入日志，重放时直接返回记录值。每一步拿到稳定的 idempotencyKey（实例 id 与步骤名组成），调用外部系统时必须透传；步骤可注册 compensate，失败或取消时按逆序补偿，补偿同样记录并重试。"
+      },
+      {
+        "heading": "等待、信号与子流程",
+        "text": "ctx.sleep(name, duration) 与 ctx.waitForSignal(name, signal, { timeout, match }) 把实例挂起到数据库，由任意进程在到期或被 signal() 唤醒后继续；ctx.waitForAny() 等待信号、定时器或子流程中最先完成者。ctx.startChild()/executeChild() 启动子工作流，ctx.setStatus() 写入不超过 16 KiB 的自定义状态。"
+      },
+      {
+        "heading": "启动与事务",
+        "text": "WorkflowClient.start(workflow, input, { id, transaction }) 启动实例，传入业务事务句柄即可让「保存订单」与「启动履约流程」原子提交，signal() 也接受事务。startAndWait() 与 result() 用于等待结果并支持超时与 AbortSignal。以业务主键作为实例 id（如 order-<id>）可让重复启动得到 WorkflowIdConflictError 而不是重复实例。"
+      },
+      {
+        "heading": "部署与运维",
+        "text": "run() 会从顶部重放，journal 以步骤名标记，重命名或删除步骤会让运行中实例失败并抛 WorkflowNonDeterminismError，需用 @Workflow({ version }) 管理版本。并发、限流、优先级与调度在装饰器配置；生产要注册 store、用命令行迁移 schema、开启 shutdown hooks 并监控事件。"
+      }
+    ],
+    "keyPoints": [
+      "用 @Workflow() 与 ctx.step() 编写可重放工作流，step 结果写入 journal",
+      "每个 step 获得稳定的 idempotencyKey，外部副作用必须透传它保证只执行一次",
+      "compensate 在失败或取消时逆序补偿，补偿同样记录日志并重试",
+      "ctx.sleep() 与 waitForSignal() 把实例持久化挂起，signal() 可从任意进程唤醒",
+      "start({ transaction }) 让启动工作流与业务写入在同一事务提交",
+      "step 名是契约：改名会触发非确定性错误，需用 version 管理部署",
+      "生产注册持久化 store、迁移 schema、开启 shutdown hooks 并监控事件"
+    ],
+    "snippets": [
+      {
+        "title": "编写订单履约工作流",
+        "lang": "typescript",
+        "code": "import { Workflow, type WorkflowContext, type WorkflowRunner } from '@nestjs/workflows';\n\n@Workflow('order-fulfilment')\nexport class OrderFulfilmentWorkflow implements WorkflowRunner<Order, FulfilmentResult> {\n  constructor(\n    private readonly paymentsService: PaymentsService,\n    private readonly inventoryService: InventoryService,\n  ) {}\n\n  async run(ctx: WorkflowContext, order: Order): Promise<FulfilmentResult> {\n    const charge = await ctx.step(\n      'charge-payment',\n      ({ idempotencyKey }) => this.paymentsService.charge(order, idempotencyKey),\n      {\n        retry: { attempts: 5, backoff: { delay: '2s' } },\n        compensate: (charge, { idempotencyKey }) =>\n          this.paymentsService.refund(charge.chargeId, idempotencyKey),\n      },\n    );\n\n    await ctx.step('reserve-stock', ({ idempotencyKey }) =>\n      this.inventoryService.reserve(order.items, idempotencyKey),\n    );\n\n    return { chargeId: charge.chargeId };\n  }\n}"
+      }
+    ],
+    "api": [
+      "WorkflowsModule",
+      "@Workflow()",
+      "WorkflowClient",
+      "WorkflowContext",
+      "ctx.step()",
+      "ctx.sleep()",
+      "ctx.waitForSignal()",
+      "WorkflowNonDeterminismError",
+      "WorkflowStorage",
+      "PostgresWorkflowStore"
+    ],
+    "pitfalls": [
+      "在 step 内部再调用 ctx.step() 或其它 ctx 方法：同一 run 内名称重复或嵌套步骤会抛定义错误。",
+      "外部系统调用不透传 idempotencyKey，进程在副作用之后崩溃，重放时会重复扣款或发货。",
+      "直接改名或删除已上线步骤：运行中实例会因非确定性失败，需要新旧 version 并存过渡。"
+    ],
+    "enterprise": "多日流程（订单履约、退款审批）用工作流承载，start() 与业务写入同事务；按业务主键设实例 id 防重复，外部调用全部带 idempotencyKey 并注册补偿，生产用 PostgreSQL store 并对 failed 事件告警。",
+    "related": [
+      "reliability/outbox",
+      "reliability/idempotency",
+      "reliability/terminus",
+      "application/task-scheduling"
+    ]
+  },
+  {
+    "id": "reliability/locks",
+    "titleZh": "分布式锁",
+    "summary": "@nestjs/locks 让定时任务或任意代码在任一时刻只在一个实例上运行：它把锁实现为共享存储中的租约，持有者持续续约，所有实例共同校验。@OnOneInstance() 让 @Cron() 任务只在一个实例上执行，@WithoutOverlapping() 阻止长任务自我重叠；Locks.acquire()/withLock() 可手动加锁，@LeaderElection() 用同一租约实现领导者选举，并配合每次获取递增的 fencing token 拒绝暂停实例的过期写入。",
+    "sections": [
+      {
+        "heading": "为什么需要分布式锁",
+        "text": "@nestjs/schedule 的 @Cron() 会在每个实例触发，导致导出重复执行、对账任务相互叠加；固定一台 RUN_JOBS 实例在滚动发布或宕机时失效，Redis 的简单 SET NX 在持有者长时间暂停（GC、网络分区）超过 TTL 后也会出现两个持有者。@nestjs/locks 用续约租约加共享存储解决这些失效模式，并暴露 abort signal 与 fencing token 供业务使用。"
+      },
+      {
+        "heading": "任务装饰器",
+        "text": "@OnOneInstance() 与 @Cron() 一起使用时每个实例仍会触发 tick，但只有持有 key:owner 租约的实例真正执行，其余跳过；@WithoutOverlapping() 为运行过程再加一把同名锁并持续续约，使长任务期间的重叠 tick 被丢弃，二者可组合。key 默认是 ClassName.methodName，跨滚动发布建议显式指定。"
+      },
+      {
+        "heading": "手动加锁与 fencing",
+        "text": "Locks.acquire(key, { wait, signal }) 返回带 fencingToken 与 signal 的 Lock，Locks.withLock() 在回调结束后自动释放；管理员手动触发的导出可与定时任务使用同一 key，避免并发。租约无法阻止已经暂停的持有者写入，因此写操作应把 fencingToken 写进条件更新（如 WHERE token <= current），存储保留已见最大 token。"
+      },
+      {
+        "heading": "存储实现与运维",
+        "text": "包只定义 LockStore 接口，应用用数据库或 Redis 实现并注册；acquire、renew、release 三个方法都必须原子，acquire 用单条 UPSERT 抢占并分配递增 token，renew/release 用 compare-and-set。生产环境无共享 store 时启动失败；应监控 LocksEvents 的 lock-lost 事件，并在部署时调用 app.enableShutdownHooks() 立即交还租约。"
+      }
+    ],
+    "keyPoints": [
+      "@OnOneInstance() 让 @Cron() 任务只在一个实例执行，其余实例跳过 tick",
+      "@WithoutOverlapping() 阻止长任务被后续 tick 再次启动，可与前者组合",
+      "Locks.withLock() 手动加锁并自动释放，LocksContext 暴露 signal 与 token",
+      "租约暂停后仍可能写入，必须用 fencing token 做条件更新拒绝旧持有者",
+      "LockStore 的 acquire、renew、release 必须原子，生产必须注册共享 store",
+      "@LeaderElection() 用同一租约实现领导者选举，适合常驻连接或单实例消费者",
+      "监控 lock-lost 事件并在部署时开启 shutdown hooks 及时交还租约"
+    ],
+    "snippets": [
+      {
+        "title": "让定时任务只在一个实例运行",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { Cron } from '@nestjs/schedule';\nimport { OnOneInstance, WithoutOverlapping } from '@nestjs/locks';\n\n@Injectable()\nexport class StockReconciliationJob {\n  @Cron(process.env.STOCK_RECONCILIATION_CRON ?? '*/5 * * * *', {\n    name: 'stock-reconciliation',\n  })\n  @OnOneInstance({ key: 'inventory:stock-reconciliation' })\n  @WithoutOverlapping()\n  async reconcileStock() {\n    // 只有租约持有者进入；长任务运行期间的 tick 被跳过\n    const counts = await this.warehouse.fetchCounts();\n    await this.stockRepository.writeCounts(counts);\n  }\n}"
+      }
+    ],
+    "api": [
+      "LocksModule",
+      "@OnOneInstance()",
+      "@WithoutOverlapping()",
+      "@LeaderElection()",
+      "Locks",
+      "LocksContext",
+      "LockStore",
+      "LocksStorage",
+      "LocksEvents",
+      "fencingToken"
+    ],
+    "pitfalls": [
+      "只在进程内用内存锁或内存 store：多实例各有一把锁，重复执行依旧发生。",
+      "ttl 设置短于一次存储往返加事件循环停顿，持有者会误以为仍持锁而继续写。",
+      "用 Redis 存锁却未开持久化与 noeviction，重启或内存回收会让 token 回退、锁丢失。"
+    ],
+    "enterprise": "单实例 cron 任务加 @OnOneInstance()，长任务补 @WithoutOverlapping()，写路径用 fencingToken 条件更新；store 放 PostgreSQL 或持久化 Redis，lock-lost 接入告警。",
+    "related": [
+      "application/task-scheduling",
+      "reliability/outbox",
+      "reliability/resilience",
+      "data/drizzle"
+    ]
+  },
+  {
+    "id": "reliability/terminus",
+    "titleZh": "健康检查",
+    "summary": "@nestjs/terminus 提供 Kubernetes 风格的 readiness/liveness 健康检查：一个健康检查汇总多个健康指标，任一指标 down 即整体失败。内置 Http、TypeOrm、Mongoose、Prisma、Microservice、gRPC、Memory 与 Disk 等指标，也可用 HealthIndicatorService.attempt() 编写自定义指标；支持 withTimeout()/cacheFor() 控制单次检查开销，并可配置日志器与优雅停机超时。",
+    "sections": [
+      {
+        "heading": "基本用法",
+        "text": "在 HealthModule 中导入 TerminusModule，创建 controller 并用 @HealthCheck() 标记检查方法，调用 HealthCheckService.check([...]) 传入指标工厂；响应包含 status、info、error、details，status 可为 ok、error、degraded 或 shutting_down。全部指标 up 返回 200，任一 down 返回 503。"
+      },
+      {
+        "heading": "数据库与系统指标",
+        "text": "TypeOrmHealthIndicator.pingCheck() 底层执行 SELECT 1 检查数据库连通性；DiskHealthIndicator.checkStorage() 检查存储占用，可按百分比阈值或固定容量判断；MemoryHealthIndicator.checkHeap()/checkRSS() 分别对比 process.memoryUsage() 的 heapUsed 与 RSS 阈值，防止进程内存超限。"
+      },
+      {
+        "heading": "自定义指标",
+        "text": "自定义指标注入 HealthIndicatorService，用 check(key).attempt(async ({ signal }) => ...) 执行检查：成功标记 up 并附加返回值，抛错标记 down 并记录错误信息，二者都带 responseTime；withTimeout(ms) 限制单次检查并在超时后中止传入的 signal，cacheFor() 让结果在指定时间内复用，避免健康检查放大下游压力。"
+      },
+      {
+        "heading": "日志与优雅停机",
+        "text": "TerminusModule.forRoot() 可配置自定义 TerminusLogger 控制失败日志格式（json 或 pretty），或完全接管日志。配置 gracefulShutdownTimeoutMs 后，收到 SIGTERM 时健康检查先返回 503 的 shutting_down，等待 in-flight 请求完成后再停机，实现滚动更新零中断；需开启 shutdown hooks，其它信号仍会立即关闭。"
+      }
+    ],
+    "keyPoints": [
+      "导入 TerminusModule 并用 @HealthCheck() 标记检查方法",
+      "任一指标失败即整体失败，响应含 status/info/error/details，HTTP 返回 503",
+      "内置 TypeOrm、Memory、Disk、Http、Microservice、gRPC 等健康指标",
+      "自定义指标用 HealthIndicatorService.check().attempt() 包装检查逻辑",
+      "withTimeout() 会中止传入的 AbortSignal，cacheFor() 复用结果降低下游压力",
+      "TerminusModule.forRoot() 可配置自定义日志器与停机超时",
+      "gracefulShutdownTimeoutMs 在 SIGTERM 时先报 shutting_down 再停机"
+    ],
+    "snippets": [
+      {
+        "title": "汇总多个健康指标",
+        "lang": "typescript",
+        "code": "import { Controller, Get } from '@nestjs/common';\nimport {\n  DiskHealthIndicator,\n  HealthCheck,\n  HealthCheckService,\n  MemoryHealthIndicator,\n  TypeOrmHealthIndicator,\n} from '@nestjs/terminus';\n\n@Controller('health')\nexport class HealthController {\n  constructor(\n    private readonly health: HealthCheckService,\n    private readonly db: TypeOrmHealthIndicator,\n    private readonly memory: MemoryHealthIndicator,\n    private readonly disk: DiskHealthIndicator,\n  ) {}\n\n  @Get()\n  @HealthCheck()\n  check() {\n    return this.health.check([\n      () => this.db.pingCheck('database'),\n      () => this.memory.checkHeap('memory_heap', 300 * 1024 * 1024),\n      () => this.disk.checkStorage('disk', { path: '/', thresholdPercent: 0.5 }),\n    ]);\n  }\n}"
+      },
+      {
+        "title": "编写自定义健康指标",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { HealthIndicatorService } from '@nestjs/terminus';\n\n@Injectable()\nexport class DogHealthIndicator {\n  constructor(\n    private readonly healthIndicatorService: HealthIndicatorService,\n  ) {}\n\n  isHealthy(key: string) {\n    return this.healthIndicatorService\n      .check(key)\n      .attempt(async ({ signal }) => {\n        const response = await fetch('https://dog.ceo/api/breeds/list', { signal });\n        const { message: breeds } = await response.json();\n        return { breeds: breeds.length };\n      })\n      .withTimeout(1000);\n  }\n}"
+      }
+    ],
+    "api": [
+      "TerminusModule",
+      "HealthCheckService",
+      "@HealthCheck()",
+      "HealthIndicatorService",
+      "TypeOrmHealthIndicator",
+      "MemoryHealthIndicator",
+      "DiskHealthIndicator",
+      "HttpHealthIndicator",
+      "gracefulShutdownTimeoutMs"
+    ],
+    "pitfalls": [
+      "健康检查端点不做超时或缓存，下游变慢时每次探针都堆积请求，反而拖垮应用。",
+      "把 readiness 与 liveness 混在一起：数据库故障时 liveness 失败会导致容器被反复重启。",
+      "内存与磁盘阈值按百分比硬编码且不分环境，容器限制与宿主机容量不同会误报。"
+    ],
+    "enterprise": "为每个依赖建立独立指标并用 withTimeout 与 cacheFor 控制开销，readiness 检查数据库与下游、liveness 只检查进程自身；用 gracefulShutdownTimeoutMs 实现零中断滚动更新。",
+    "related": [
+      "observability/overview",
+      "reliability/resilience",
+      "deployment",
+      "data/typeorm"
+    ]
+  }
+]

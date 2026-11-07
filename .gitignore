@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# runtime-generated playground state (never commit)
+playground/
+playground-saves/
+playground-state.json
+.dsh-load-marker.json
+
+# logs / OS / editor
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# npm pack artifacts
+*.tgz

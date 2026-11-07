@@ -1,0 +1,359 @@
+[
+  {
+    "id": "recipes/fastify-migration",
+    "titleZh": "从 Fastify 迁移",
+    "summary": "这一页讲如何把 Fastify 应用迁到 Nest 而继续跑在 FastifyAdapter 上，路由、插件、JSON schema 与序列化行为保持不变，只是在外层加上模块、依赖注入、守卫与管道。提供两种策略：逐路由迁移（Nest 跑在你的 Fastify 实例上）与一次性替换；并给出路由翻译对照表、契约测试方法与编码 agent 提示词。",
+    "sections": [
+      {
+        "heading": "两种迁移策略",
+        "text": "逐路由迁移时 Nest 与 Fastify 共用同一实例与端口，插件与 hook 对 Nest 路由同样生效，可逐步部署、随时回滚；一次性迁移则新建 Nest 应用整体替换，Fastify 应用作为行为基准，适合规模小、能用测试锁定的项目。"
+      },
+      {
+        "heading": "在现有实例上启动",
+        "text": "先停掉 app.listen 并导出返回实例的函数，把 setErrorHandler 移进封装插件、删除 setNotFoundHandler（否则 Nest 拒绝启动）。再 new FastifyAdapter(await buildLegacyApp()) 创建应用，由 Nest 负责 listen。"
+      },
+      {
+        "heading": "避免无声的行为变化",
+        "text": "响应 schema 会删掉未声明字段，漏配会把 passwordHash 发出去；Fastify 的 POST 默认 200、Nest 默认 201，schema 键要对齐；Fastify 在 onRequest 认证先于校验，Nest 的 @RouteSchema body 校验先于守卫，需要时改用 @Body({ schema }) 管道。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 通过 `FastifyAdapter` 复用现有 Fastify 实例，路由器与插件不变",
+      "需 Fastify 5；Nest 启动时会注册依赖 v5 的插件，v4 直接失败",
+      "删除 `setNotFoundHandler()`，把 `setErrorHandler()` 移入封装插件",
+      "`@RouteSchema()` 可复用原有 JSON schema，避免响应多暴露字段",
+      "Fastify 的 `onRequest` 认证先于校验，Nest 的 schema 校验先于守卫",
+      "按对照表把 `reply.code()` 映射为 `@HttpCode()` 与 `@Redirect()`",
+      "用只认 URL 的黑盒契约测试在迁移前后各跑一遍"
+    ],
+    "snippets": [
+      {
+        "title": "在现有 Fastify 实例上启动",
+        "lang": "typescript",
+        "code": "export async function buildLegacyApp() {\n  const app = Fastify();\n  await app.register(helmet);\n  await app.register(auth);\n  app.addHook('onRequest', async (request, reply) => {\n    reply.header('x-request-id', request.headers['x-request-id'] ?? 'generated');\n  });\n  await app.register(async (legacy) => {\n    legacy.setErrorHandler(errorHandler);\n    await legacy.register(ordersRoutes, { prefix: '/api/orders' });\n  });\n  // await app.listen({ port: 3000 }); <- Nest listens from now on\n  return app;\n}\n\nconst app = await NestFactory.create<NestFastifyApplication>(\n  AppModule,\n  new FastifyAdapter(await buildLegacyApp()),\n);\nawait app.listen(process.env.PORT ?? 3000);"
+      },
+      {
+        "title": "异常过滤器保持旧错误结构",
+        "lang": "typescript",
+        "code": "@Catch()\nexport class ApiExceptionFilter implements ExceptionFilter {\n  catch(exception: any, host: ArgumentsHost) {\n    const http = host.switchToHttp();\n    const request = http.getRequest<FastifyRequest>();\n    const reply = http.getResponse<FastifyReply>();\n    const send = (status: number, code: string, message: string) =>\n      reply.code(status).send({ error: { code, message } });\n\n    if (exception instanceof ApiError) {\n      return send(exception.status, exception.code, exception.message);\n    }\n    if (exception instanceof NotFoundException) {\n      return send(404, 'NOT_FOUND', 'No route for ' + request.method + ' ' + request.url);\n    }\n    return send(500, 'INTERNAL', 'Something went wrong');\n  }\n}"
+      }
+    ],
+    "api": [
+      "FastifyAdapter",
+      "NestFastifyApplication",
+      "@RouteSchema()",
+      "@HttpCode()",
+      "@Redirect()",
+      "StreamableFile",
+      "app.register()",
+      "setErrorHandler()"
+    ],
+    "pitfalls": [
+      "保留 not-found 处理器会让 Nest 启动报 Not found handler already set",
+      "同路径同时存在于 Fastify 与 Nest 时会报 Method already declared",
+      "响应 schema 缺失会静默多返回字段，如 passwordHash"
+    ],
+    "enterprise": "大型 Fastify 服务优先逐路由迁移：保留插件与 hook，先把鉴权改为守卫、错误处理改为全局过滤器，再用契约测试锁定状态码与响应结构，最后清理 legacy 目录。",
+    "related": [
+      "recipes/express-migration",
+      "http/performance",
+      "exception-filters",
+      "controllers"
+    ]
+  },
+  {
+    "id": "recipes/cqrs",
+    "titleZh": "CQRS",
+    "summary": "CQRS 把读写职责分离：命令改变状态、查询读取数据、事件通知其他部分。@nestjs/cqrs 提供 CommandBus、QueryBus、EventBus、EventPublisher 与 @Saga() 等轻量构件，配合 AggregateRoot 实现事件驱动风格的领域模型。页面还覆盖 saga、持久化工作流、未处理异常与请求作用域处理器。",
+    "sections": [
+      {
+        "heading": "命令与查询",
+        "text": "命令继承 Command<T> 声明返回类型，由 @CommandHandler 标注的处理器实现 execute()，通过 CommandBus.execute() 派发并拿到结果；查询继承 Query<T>，用 @QueryHandler 与 QueryBus.execute()。处理器需注册为模块 provider。"
+      },
+      {
+        "heading": "事件与聚合根",
+        "text": "领域模型继承 AggregateRoot，用 this.apply(event) 记录事件，再通过 EventPublisher.mergeObjectContext() 把模型接入 EventBus，调用 commit() 批量发布。事件用 @EventsHandler 标注，一个事件可以有多个处理器。"
+      },
+      {
+        "heading": "Saga 与持久化",
+        "text": "@Saga() 把属性声明为 saga，接收 events$ 流，用 ofType/map 等 RxJS 操作符把事件映射为新命令，由 CommandBus 异步派发。saga 与事件处理器都在内存中运行，需要跨重启可靠执行时应改用 @nestjs/workflows 的持久化工作流。"
+      },
+      {
+        "heading": "请求作用域与异常",
+        "text": "CommandBus 等是单例，@nestjs/cqrs 会为每个命令、查询、事件创建请求作用域处理器的新实例；可用 scope: Scope.REQUEST 声明，并用继承 AsyncContext 的上下文对象经 execute() 第二参数传入。未处理异常会进入 UnhandledExceptionBus。"
+      }
+    ],
+    "keyPoints": [
+      "`CqrsModule.forRoot()` 注册模块，异步配置用 `forRootAsync()`",
+      "`CommandBus.execute()` 派发命令，`@CommandHandler()` 处理并返回结果",
+      "`Command<T>` 与 `Query<T>` 只用于声明返回类型，继承是可选的",
+      "`AggregateRoot.apply()` 暂存事件，`commit()` 统一发布",
+      "`mergeObjectContext()` 把 EventBus 能力合并进领域对象",
+      "`@Saga()` 返回 `Observable<ICommand>`，由 `CommandBus` 异步派发",
+      "`UnhandledExceptionBus` 收集事件处理器与 saga 抛出的未处理异常"
+    ],
+    "snippets": [
+      {
+        "title": "命令、处理器与派发",
+        "lang": "typescript",
+        "code": "export class KillDragonCommand extends Command<{ actionId: string }> {\n  constructor(\n    public readonly heroId: string,\n    public readonly dragonId: string,\n  ) {\n    super();\n  }\n}\n\n@CommandHandler(KillDragonCommand)\nexport class KillDragonHandler implements ICommandHandler<KillDragonCommand> {\n  constructor(private repository: HeroesRepository) {}\n\n  async execute(command: KillDragonCommand) {\n    const { heroId, dragonId } = command;\n    const hero = this.repository.findOneById(+heroId);\n    hero.killEnemy(dragonId);\n    await this.repository.persist(hero);\n    return { actionId: crypto.randomUUID() };\n  }\n}\n\nawait this.commandBus.execute(new KillDragonCommand(heroId, dragonId));"
+      },
+      {
+        "title": "Saga 把事件映射为命令",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class HeroesGameSagas {\n  @Saga()\n  dragonKilled = (events$: Observable<any>): Observable<ICommand> => {\n    return events$.pipe(\n      ofType(HeroKilledDragonEvent),\n      map((event) => new DropAncientItemCommand(event.heroId, fakeItemID)),\n    );\n  };\n}"
+      }
+    ],
+    "api": [
+      "CqrsModule.forRoot()",
+      "CommandBus",
+      "QueryBus",
+      "EventBus",
+      "EventPublisher",
+      "@CommandHandler()",
+      "@QueryHandler()",
+      "@EventsHandler()",
+      "@Saga()",
+      "AggregateRoot"
+    ],
+    "pitfalls": [
+      "忘记把 handler 或 saga 注册为 provider，派发时找不到处理器",
+      "事件处理器异步执行，异常不会被 HTTP 异常过滤器捕获",
+      "saga 存在内存中，进程重启会丢失未完成的流程"
+    ],
+    "enterprise": "在复杂业务域（订单、履约）用 CQRS 拆分读写模型：命令处理器只改状态并发布事件，查询走独立读模型；跨服务流程交给持久化工作流，并用 UnhandledExceptionBus 接入告警。",
+    "related": [
+      "reliability/workflows",
+      "fundamentals/injection-scopes",
+      "application/events",
+      "microservices/basics"
+    ]
+  },
+  {
+    "id": "recipes/serve-static",
+    "titleZh": "静态资源服务",
+    "summary": "用 @nestjs/serve-static 的 ServeStaticModule 把 SPA 或静态站点与 Nest API 部署在同一个进程。forRoot() 配置 rootPath 指向构建产物，默认 renderPath 匹配所有路径并回退 index.html 以支持前端路由，同时保留控制器路由。还可用 serveRoot、exclude、缓存头等选项调整行为。",
+    "sections": [
+      {
+        "heading": "安装与注册",
+        "text": "安装 @nestjs/serve-static，在根 AppModule 的 imports 里调用 ServeStaticModule.forRoot({ rootPath: join(import.meta.dirname, '..', 'client') })，把前端构建产物放到该目录即可。静态站点与 API 共用端口，省去单独托管。"
+      },
+      {
+        "heading": "SPA 回退行为",
+        "text": "默认 renderPath 匹配所有路径并返回 index.html，从而支持客户端路由；控制器已声明的路由仍由服务端处理。可通过 serveRoot 与 renderPath 组合改变渲染路径与挂载点，也可用 exclude 排除特定路径。"
+      },
+      {
+        "heading": "Fastify 差异",
+        "text": "ServeStaticModule 支持 Express 与 Fastify 适配器，但 Fastify 默认在未命中时返回 404；需要把 serveStaticOptions.fallthrough 设为 true，才能像 Express 一样回退到 index.html。"
+      }
+    ],
+    "keyPoints": [
+      "`ServeStaticModule.forRoot({ rootPath })` 在根模块注册静态服务",
+      "静态站点与 API 同端口部署，无需额外 web server",
+      "默认 `renderPath` 匹配全部路径并返回 `index.html`，支持 SPA 路由",
+      "`serveRoot` 指定挂载路径，`exclude` 排除不需要静态处理的路由",
+      "Fastify 需 `serveStaticOptions.fallthrough: true` 才有回退",
+      "可通过选项控制 `Cache-Control` 等响应头"
+    ],
+    "snippets": [
+      {
+        "title": "在 AppModule 中注册",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { ServeStaticModule } from '@nestjs/serve-static';\nimport { join } from 'node:path';\nimport { AppController } from './app.controller.js';\nimport { AppService } from './app.service.js';\n\n@Module({\n  imports: [\n    ServeStaticModule.forRoot({\n      rootPath: join(import.meta.dirname, '..', 'client'),\n      exclude: ['/api/{*path}'],\n    }),\n  ],\n  controllers: [AppController],\n  providers: [AppService],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "ServeStaticModule",
+      "ServeStaticModule.forRoot()",
+      "rootPath",
+      "renderPath",
+      "serveRoot",
+      "fallthrough"
+    ],
+    "pitfalls": [
+      "把 rootPath 指向源码目录而非构建产物，线上会 404",
+      "Fastify 下未开 fallthrough，刷新前端路由会得到 404",
+      "静态回退放行全部路径时，未匹配的 API 也会返回 index.html"
+    ],
+    "enterprise": "适合把管理后台、文档站与 API 同镜像交付；生产建议由 CDN 或 Nginx 托管静态资源，Nest 仅保留 SPA 回退，并用 exclude 隔离 /api 路径。",
+    "related": [
+      "http/mvc",
+      "recipes/nextjs",
+      "controllers"
+    ]
+  },
+  {
+    "id": "recipes/nextjs",
+    "titleZh": "Next.js 集成",
+    "summary": "这一页在一个仓库内用 npm workspaces 同时放 Nest 与 Next.js：Next 负责渲染，Nest 接管 API、鉴权、后台任务与其他客户端。浏览器只访问 Next 同源的 /api，通过 rewrites 的 fallback 转发给 Nest，从而免 CORS 并共享 cookie；共享包里的 Zod schema 同时校验表单与请求。还给出从 route handler 迁移到 Nest 的对照与步骤。",
+    "sections": [
+      {
+        "heading": "项目结构与转发",
+        "text": "仓库分 apps/api、apps/web 与 packages/contracts；Nest 用 setGlobalPrefix('api') 并监听 3001，Next 在 next.config.ts 的 rewrites().fallback 中把 /api/:path* 转发到 API_URL，且 fallback 在 Next 自身路由之后执行。"
+      },
+      {
+        "heading": "共享 schema",
+        "text": "contracts 包导出 Zod schema 与推导类型，Nest 绑定 StandardSchemaValidationPipe 并用 @Body({ schema }) 校验，Next 表单用同一 schema 的 safeParse 预校验。这样两端规则一致，绕过表单的请求仍会被服务端拦截。"
+      },
+      {
+        "heading": "从 handler 迁移",
+        "text": "每个 route handler 对应一个控制器方法：守卫替代每个 handler 里的 getSession()，@Body({ schema }) 替代手工解析，NotFoundException 替代手写 404，@Cron() 与 Gateway 替代平台定时任务与 WebSocket。逐条迁移时 URL 不变，只需注意 200/201 与错误结构。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 用 `setGlobalPrefix('api')`，Next 用 `fallback` 转发",
+      "fallback 在 Next 自身页面与 route handler 之后执行，可渐进迁移",
+      "`API_URL` 在 `next build` 时就要设置，运行时修改不会改变转发目标",
+      "`@Body({ schema })` 支持 Zod 等 Standard Schema",
+      "Server Component 用 `cookies()` 转发 cookie 调用 Nest",
+      "Nest 看到的客户端是 Next 服务器，限流需配合 trust proxy",
+      "超大请求体或超时响应需调 `proxyClientMaxBodySize` 与 `proxyTimeout`"
+    ],
+    "snippets": [
+      {
+        "title": "Next.js 转发 /api",
+        "lang": "typescript",
+        "code": "import type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  async rewrites() {\n    return {\n      fallback: [\n        {\n          source: '/api/:path*',\n          destination: 'http://localhost:3001/api/:path*',\n        },\n      ],\n    };\n  },\n  experimental: {\n    proxyClientMaxBodySize: '100mb',\n    proxyTimeout: 120_000,\n  },\n};\n\nexport default nextConfig;"
+      },
+      {
+        "title": "共享 schema 与服务端校验",
+        "lang": "typescript",
+        "code": "import { Body, Controller, Get, Post } from '@nestjs/common';\nimport { createOrderSchema, type CreateOrderInput, type Order } from '@acme/contracts';\nimport { OrdersService } from './orders.service.js';\n\n@Controller('orders')\nexport class OrdersController {\n  constructor(private readonly ordersService: OrdersService) {}\n\n  @Get()\n  findAll(): Promise<Order[]> {\n    return this.ordersService.findAll();\n  }\n\n  @Post()\n  create(@Body({ schema: createOrderSchema }) input: CreateOrderInput): Promise<Order> {\n    return this.ordersService.create(input);\n  }\n}"
+      }
+    ],
+    "api": [
+      "next.config.ts",
+      "rewrites()",
+      "setGlobalPrefix()",
+      "StandardSchemaValidationPipe",
+      "@Body()",
+      "trust proxy",
+      "proxyTimeout"
+    ],
+    "pitfalls": [
+      "API_URL 只在运行时设置，next build 生成的 rewrites 仍指向旧地址",
+      "Next 代理让 req.ip 全变成服务器地址，按 IP 限流会误伤所有用户",
+      "Next 的 POST 返回 200，Nest 默认 201，迁移后客户端可能判断失败"
+    ],
+    "enterprise": "适合前端与后端团队共仓协作：contracts 包成为唯一契约来源，Nest 提供鉴权、队列与定时任务，Next 只做渲染；部署时分别构建，Next 侧以 API_URL 指向 Nest。",
+    "related": [
+      "security/cors",
+      "application/validation",
+      "http/webhooks",
+      "deployment"
+    ]
+  },
+  {
+    "id": "recipes/nest-commander",
+    "titleZh": "Nest Commander",
+    "summary": "nest-commander 是第三方包，让你用与 Nest 应用相同的模块与依赖注入结构编写 CLI。命令类用 @Command() 标注并继承 CommandRunner，选项用 @Option() 声明解析器；CommandFactory.run(AppModule) 负责启动并在结束时关闭应用。页面还介绍日志配置、CommandTestFactory 测试与完整示例。",
+    "sections": [
+      {
+        "heading": "命令类结构",
+        "text": "每个命令都是一个 @Injectable() 类，继承 CommandRunner 并实现 run(params: string[], options: Record<string, any>)。run 的第一个参数是未匹配选项的位置参数，第二个是选项对象，键名对应 @Option() 的 name，可用接口约束类型。"
+      },
+      {
+        "heading": "启动与日志",
+        "text": "在 main.ts 调用 CommandFactory.run(AppModule)，内部会创建 Nest 上下文并在命令结束时 app.close()，避免内存泄漏。默认关闭 Nest logger，可传自定义 logger 或日志级别数组（如 ['warn', 'error']）开启；错误处理用 try/catch 包裹。"
+      },
+      {
+        "heading": "测试支持",
+        "text": "nest-commander-testing 提供 CommandTestFactory，用法类似 @nestjs/testing 的 Test.createTestingModule()，传入模块元数据后可继续 overrideProvider() 再 compile()，因此命令的依赖替换方式与普通 Nest 测试一致。"
+      }
+    ],
+    "keyPoints": [
+      "`nest-commander` 是第三方包，不在 Nest 核心团队维护范围内",
+      "命令继承 `CommandRunner` 并用 `@Command()` 标注",
+      "`@Option({ flags, description })` 声明选项，方法把字符串解析为目标类型",
+      "`run(passedParam, options)` 是命令入口，返回 `Promise<void>`",
+      "`CommandFactory.run(AppModule)` 结束时自动关闭应用",
+      "`CommandFactory.run()` 第二参数可传 logger 或日志级别数组",
+      "`CommandTestFactory` 基于 `@nestjs/testing` 构建测试模块"
+    ],
+    "snippets": [
+      {
+        "title": "一个带选项的 CLI 命令",
+        "lang": "typescript",
+        "code": "import { Command, CommandRunner, Option } from 'nest-commander';\n\ninterface BasicCommandOptions {\n  number?: number;\n  string?: string;\n  boolean?: boolean;\n}\n\n@Command({ name: 'basic', description: 'A parameter parse' })\nexport class BasicCommand extends CommandRunner {\n  async run(passedParam: string[], options?: BasicCommandOptions): Promise<void> {\n    console.log({ passedParam, options });\n  }\n\n  @Option({ flags: '-n, --number [number]', description: 'A basic number parser' })\n  parseNumber(val: string): number {\n    return Number(val);\n  }\n\n  @Option({ flags: '-s, --string [string]', description: 'A string return' })\n  parseString(val: string): string {\n    return val;\n  }\n}"
+      }
+    ],
+    "api": [
+      "CommandRunner",
+      "@Command()",
+      "@Option()",
+      "CommandFactory.run()",
+      "CommandTestFactory"
+    ],
+    "pitfalls": [
+      "命令类忘记加入模块 providers，运行时找不到命令",
+      "CommandFactory 默认关闭 logger，调试时容易看不到启动错误",
+      "run() 的第二个参数是选项对象，位置参数要从未匹配数组里取"
+    ],
+    "enterprise": "把运维脚本、数据修复与定时任务收敛为 CLI 模块，复用应用的 provider 与配置；在 CI 中用 CommandTestFactory 覆盖命令逻辑，避免脚本散落在仓库各处难以审计。",
+    "related": [
+      "standalone-applications",
+      "application/task-scheduling",
+      "cli/overview"
+    ]
+  },
+  {
+    "id": "recipes/async-local-storage",
+    "titleZh": "Async Local Storage",
+    "summary": "AsyncLocalStorage 基于 async_hooks，把请求级状态隐式贯穿调用链，避免层层传参，可作为 REQUEST 作用域 provider 的替代。页面先手写实现（自定义 provider 加中间件 als.run），再介绍开箱方案：NestJS Observe 的 TracerService 与第三方 nestjs-cls 的 ClsModule/ClsService，并说明类型化、非 HTTP 场景与测试方式。",
+    "sections": [
+      {
+        "heading": "手写实现",
+        "text": "把 new AsyncLocalStorage() 注册为自定义 provider 并在模块中导出；在中间件里调用 als.run(store, () => next())，让整个请求生命周期共享同一 store；服务中注入 AsyncLocalStorage，用 getStore() 读取并按请求隔离。"
+      },
+      {
+        "heading": "NestJS Observe",
+        "text": "启用 @nestjs/observe 后 SDK 已为每个请求、任务与消息维护 ALS store，并承载 trace 上下文。注入 TracerService，用 setAttribute/getAttribute 读写，currentTraceId() 取关联 ID，覆盖 HTTP、GraphQL、gRPC 与 cron。"
+      },
+      {
+        "heading": "nestjs-cls",
+        "text": "第三方包 nestjs-cls 把实现封装为 ClsModule，可在多种传输方式下初始化 store，并用 ClsService 读写；支持 middleware.mount、setup 默认值、ClsService<MyClsStore> 强类型，以及测试中的 runWith。"
+      }
+    ],
+    "keyPoints": [
+      "`AsyncLocalStorage` 用 `run(store, callback)` 包裹调用链",
+      "把实例注册为 `AsyncLocalStorage` 的自定义 value provider",
+      "在中间件里 `als.run(store, () => next())`，store 对整条请求可见",
+      "`als.getStore()` 读取当前请求的状态，避免注入整个 REQUEST 对象",
+      "`@nestjs/observe` 的 `TracerService` 内置 store 与 trace",
+      "`nestjs-cls` 的 `ClsModule` 加 `ClsService` 支持多传输与强类型",
+      "隐式上下文会遮蔽代码流，避免把 store 变成万能对象"
+    ],
+    "snippets": [
+      {
+        "title": "手写 ALS 模块与中间件",
+        "lang": "typescript",
+        "code": "import { AsyncLocalStorage } from 'node:async_hooks';\n\n@Module({\n  providers: [{ provide: AsyncLocalStorage, useValue: new AsyncLocalStorage() }],\n  exports: [AsyncLocalStorage],\n})\nexport class AlsModule {}\n\n@Module({\n  imports: [AlsModule],\n  providers: [CatsService],\n  controllers: [CatsController],\n})\nexport class AppModule implements NestModule {\n  constructor(private readonly als: AsyncLocalStorage) {}\n\n  configure(consumer: MiddlewareConsumer) {\n    consumer\n      .apply((req, res, next) => {\n        this.als.run({ userId: req.headers['x-user-id'] }, () => next());\n      })\n      .forRoutes('*path');\n  }\n}"
+      },
+      {
+        "title": "用 TracerService 读写",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService {\n  constructor(\n    private readonly tracerService: TracerService<RequestStore>,\n    private readonly catsRepository: CatsRepository,\n  ) {}\n\n  getCatForUser() {\n    const userId = this.tracerService.getAttribute('userId');\n    return this.catsRepository.getForUser(userId);\n  }\n\n  enableBeta() {\n    this.tracerService.setAttribute('flags.betaCheckout', true);\n  }\n}"
+      }
+    ],
+    "api": [
+      "AsyncLocalStorage",
+      "als.run()",
+      "als.getStore()",
+      "TracerService",
+      "ClsModule",
+      "ClsService"
+    ],
+    "pitfalls": [
+      "在中间件之外创建 store（如守卫里）会导致后续链取不到上下文",
+      "手写方案只覆盖 HTTP，gRPC、队列与 cron 需要各自接入",
+      "滥用全局 store 会形成隐式依赖，调试时难以追踪数据来源"
+    ],
+    "enterprise": "用于请求级租户、事务对象或审计信息的透传：优先采用 @nestjs/observe 或 nestjs-cls 等成熟实现，为 store 定义接口并限制写入点，避免业务代码依赖隐式全局状态。",
+    "related": [
+      "fundamentals/injection-scopes",
+      "observability/overview",
+      "fundamentals/module-ref",
+      "application/logger"
+    ]
+  }
+]

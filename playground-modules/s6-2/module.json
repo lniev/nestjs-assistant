@@ -1,0 +1,54 @@
+{
+  "id": "s6-2",
+  "itemId": "s6-2",
+  "stageId": "s6",
+  "stageIndex": 6,
+  "itemIndex": 2,
+  "stageTitleZh": "工程化与可交付",
+  "titleZh": "e2e 测试与回归套件",
+  "title": "e2e 测试与回归套件",
+  "level": "L3",
+  "goal": "用 createNestApplication 配合 Supertest 覆盖登录、鉴权、下单主链路，形成回归套件。",
+  "practice": "在操练场写一条登录失败 e2e，断言 401 与错误码字段。",
+  "deliverable": "覆盖 3 条关键链路的 e2e 套件与 CI 命令",
+  "accept": "npm run test:e2e 全绿，故意改坏校验时套件会失败",
+  "minutes": 300,
+  "pageIds": [
+    "fundamentals/testing",
+    "application/validation"
+  ],
+  "summary": "统一错误契约（statusCode + code + message + traceId + path + timestamp）配全局异常过滤器：登录失败 401 AUTH_INVALID_CREDENTIALS、无/坏 token 两种 401、越权 403 ORDER_FORBIDDEN、参数 400。GET /e2e/run 在进程内跑 6 条 e2e 场景（真实项目用 supertest），覆盖 401/403/400 边界和登录→下单→查询主链路。",
+  "defaultFile": "src/e2e/regression.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/e2e/run",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/auth/demo?username=alice&password=s3cret",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "expect": 401
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "expect": 401
+    },
+    {
+      "method": "GET",
+      "path": "/orders/1",
+      "expect": 401
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+[
+  {
+    "id": "observability/overview",
+    "titleZh": "可观测性概览",
+    "summary": "NestJS Observe 是 NestJS 官方推出、自动插桩的应用性能监控（APM）与可观测性平台。安装 @nestjs/observe SDK 并配置 API key 后，应用会把请求、后台任务、错误、日志与追踪数据持续上报到仪表盘，无需手动埋点、部署 collector 或设计 schema。它基于 Nest 自身请求生命周期插桩，因此追踪按控制器、守卫、拦截器、方法等代码词汇呈现，而不只停留在路由层。",
+    "sections": [
+      {
+        "heading": "与通用 APM 的区别",
+        "text": "通用 Node.js APM 只挂接 HTTP 服务器与数据库驱动，中间的框架逻辑是黑盒。NestJS Observe 通过 NestFactory.create() 的 instrument 选项接入框架内部，能看到每个控制器、提供者、解析器与队列消费者，追踪以 OrdersService.recalculate 这类类名/方法名呈现，并可按类与方法统计自身耗时。它不是 OpenTelemetry 的替代品，可与已有 OpenTelemetry 并行。"
+      },
+      {
+        "heading": "三层组织结构",
+        "text": "观测数据按 team、project、application 三层组织。team 是用户集合，订阅按 team 管理；project 是一起发布的多个应用集合，通常一个产品或环境一个，告警、issue、SLO 与 API key 都以此为作用域；application 是单个被 SDK 插桩的 NestJS 服务。项目成员分为 Read、Write、Admin 三种权限级别。"
+      },
+      {
+        "heading": "订阅与用量计量",
+        "text": "用量以 Observability Events（OE）计量：每次请求、后台任务运行、错误、日志行或 span 各计一个事件。Free 每月 30 万事件保留 3 天，Pro 2500 万事件保留 30 天并含日志与告警，Scale 2 亿事件保留 90 天并含 SSO 与 SLO。Free 超额后分阶段降级，最终以 429 拒绝接收，且数据被丢弃而非排队。"
+      },
+      {
+        "heading": "性能开销",
+        "text": "SDK 对请求的额外开销很小：典型端点中位延迟约增加 0.1 ms，每次被追踪调用消耗几微秒 CPU；内存启动时约增加 11 MB、负载下 32-64 MB，空闲进程约耗 0.3%-0.6% 单核。官方经验值是每请求约 8 µs CPU 加上每次追踪调用 1-2.5 µs。采样、批处理与 flushInterval 共同控制上报量。"
+      }
+    ],
+    "keyPoints": [
+      "@nestjs/observe 是官方 SDK，安装并写入 API key 即自动上报请求、任务、错误与追踪。",
+      "通过 NestFactory.create() 的 instrument 选项接入，无需进程级补丁或前置 import。",
+      "追踪以 Nest 类与方法命名，可查看每个类的自身耗时（self time）与总耗时。",
+      "Free 方案含错误监控与分布式追踪，用量按 Observability Events 计量并有分级降级策略。",
+      "三层模型 team → project → application，API key、告警、SLO 均按 project 作用域。",
+      "付费方案增加日志流、告警规则、生产规则、状态页、SSO 与 MCP server 等能力。",
+      "可用 npx @nestjs/observe link 在终端完成项目创建、API key 写入与 SDK 接线。"
+    ],
+    "snippets": [
+      {
+        "title": "终端链接并配置项目",
+        "lang": "bash",
+        "code": "# 在项目目录执行，按提示在浏览器中确认 8 位代码\n$ npx @nestjs/observe link\n\n# 命令会把密钥写入 .env，并为 nest start 脚本加上 --env-file .env\nOBSERVE_APP_KEY=your-app-key\nOBSERVE_APP_SECRET=your-app-secret"
+      }
+    ],
+    "api": [
+      "@nestjs/observe",
+      "NestFactory.create()",
+      "instrument",
+      "ObserveModule.forRoot()",
+      "createObserveModule()"
+    ],
+    "pitfalls": [
+      "忘记把 ObserveInstrument 传给 NestFactory.create()，SDK 完全不生效。",
+      "把 appKey/appSecret 提交进代码仓库；应通过环境变量或密钥管理器注入并及时轮换。",
+      "应用使用 FastifyAdapter 时，instrument 选项必须作为第三个参数传入，否则会被静默丢弃。"
+    ],
+    "enterprise": "NestJS 应用若希望按自身类与方法定位性能问题、又不想维护 collector，可优先选 Observe；与其他语言服务共存时开启 openTelemetry 即可共享 W3C trace。生产环境使用独立 API key 并配置 spend controls。",
+    "related": [
+      "observability/sdk",
+      "observability/dashboard",
+      "observability/choosing-an-apm",
+      "observability/opentelemetry"
+    ]
+  },
+  {
+    "id": "observability/sdk",
+    "titleZh": "Observe SDK",
+    "summary": "@nestjs/observe SDK 把应用的请求、任务、错误、日志与追踪送入 NestJS Observe 仪表盘，它挂接控制器、拦截器、队列消费者等 Nest 生命周期，而不是通用 Node.js agent。集成分三步：createObserveModule() 得到 ObserveModule 与 ObserveInstrument、根模块 forRoot() 配置凭据、把 ObserveInstrument 传给 NestFactory.create()。多数埋点无需手写 span。",
+    "sections": [
+      {
+        "heading": "三步接入",
+        "text": "createObserveModule() 返回配套的 ObserveModule 与 ObserveInstrument，两者必须使用同一份配置。在根模块 imports 中加入 ObserveModule.forRoot() 并至少提供 serviceId，然后把 ObserveInstrument 传给 NestFactory.create()。同一 instrument 选项也适用于 createMicroservice() 与 createApplicationContext()；用 FastifyAdapter 时选项要放到第三个参数。"
+      },
+      {
+        "heading": "认证与模块配置",
+        "text": "forRoot() 必填 appKey、appSecret、serviceId，可选 serviceVersion、endpoint、debug、enabled、tracesSampleRate 等。未设 serviceVersion 时，SDK 会从 OBSERVE_SERVICE_VERSION、CI 平台变量、.git 或容器修订号推断发布标识。凭据可来自环境变量回退；需要配置服务时用 forRootAsync()，支持 useFactory/inject、useClass、useExisting 与 extraProviders。"
+      },
+      {
+        "heading": "自动插桩范围",
+        "text": "SDK 自动记录数据库查询与出站 HTTP span，数据库在驱动层插桩（pg、mysql2、mssql、mongodb），因此覆盖 TypeORM、Drizzle、Mongoose、Prisma 等而无需具名。它还记录模型调用 token 用量、WebSocket @SubscribeMessage 消息、Bull 与 BullMQ 任务、运行时 CPU/内存/事件循环指标。查询语句会移除所有字面量，重复查询折叠为带计数的单节点。"
+      },
+      {
+        "heading": "日志关联与采样",
+        "text": "forwardLogs 默认关闭，开启后把 Logger 输出与 trace 关联并上报；redaction 默认开启，内置 bearer token、JWT、AWS key、私钥与卡号等脱敏规则。traceIdGenerator 默认采用合法的 x-request-id，否则生成 UUID v7；attachTraceIdToLogs 让 ConsoleLogger 附带 traceId。tracesSampleRate、maxTracesPerBatch、flushInterval 控制采样与批量，shutdownFlushTimeout 控制关闭前最后上报。"
+      }
+    ],
+    "keyPoints": [
+      "createObserveModule() 返回 ObserveModule 与 ObserveInstrument，二者需配合使用。",
+      "ObserveModule.forRoot() 必填 appKey、appSecret、serviceId，支持 forRootAsync()。",
+      "instrument 选项经 NestFactory.create() 注入；Fastify 适配器时必须放第三个参数。",
+      "serviceVersion 未显式设置时从环境、CI、.git 或容器修订变量推断，用于 Releases 视图。",
+      "自动记录数据库查询与出站 HTTP span，数据库在驱动层插桩，覆盖主流 ORM。",
+      "forwardLogs 默认关闭；redaction 默认开启，内置 bearer token、JWT、卡号等脱敏规则。",
+      "tracesSampleRate、flushInterval、maxTracesPerBatch 控制采样与批量上报频率。"
+    ],
+    "snippets": [
+      {
+        "title": "三步接入 Observe SDK",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\nimport { createObserveModule } from '@nestjs/observe';\n\nexport const { ObserveModule, ObserveInstrument } = createObserveModule();\n\n@Module({\n  imports: [\n    ObserveModule.forRoot({\n      appKey: process.env.OBSERVE_APP_KEY!,\n      appSecret: process.env.OBSERVE_APP_SECRET!,\n      serviceId: 'cats-app',\n    }),\n  ],\n})\nexport class AppModule {}\n\nconst app = await NestFactory.create(AppModule, {\n  instrument: ObserveInstrument,\n});"
+      },
+      {
+        "title": "源码上下文与日志脱敏",
+        "lang": "typescript",
+        "code": "export const { ObserveModule, ObserveInstrument } = createObserveModule({\n  sourceContext: { linesOfContext: 5, maxFrames: 5 },\n  traceIdKey: 'traceId',\n  attachTraceIdToLogs: true,\n});\n\nObserveModule.forRoot({\n  // ...\n  enabled: process.env.NODE_ENV === 'production',\n  forwardLogs: true,\n  redaction: { enabled: true, keys: ['internalToken'] },\n  runtimeMetrics: true,\n  runtimeMetricsInterval: 60000,\n  tracesSampleRate: 0.25,\n});"
+      }
+    ],
+    "api": [
+      "@nestjs/observe",
+      "createObserveModule()",
+      "ObserveModule.forRoot()",
+      "ObserveModule.forRootAsync()",
+      "instrument",
+      "TracerService",
+      "@Objective()",
+      "serviceVersion",
+      "tracesSampleRate"
+    ],
+    "pitfalls": [
+      "FastifyAdapter 下 options 作为第二个参数传入会被静默丢弃，instrument 必须放第三个。",
+      "测试或本地保留真实凭据会让请求上报到项目，应设 enabled: false 或 shutdownFlushTimeout: 0。",
+      "未调用 app.enableShutdownHooks() 时 SIGTERM 会直接结束进程，最后一批遥测丢失。"
+    ],
+    "enterprise": "企业建议用 forRootAsync() 从 ConfigService 读取凭据，生产单独签发密钥；用 enabled 区分环境、tracesSampleRate 控制高流量成本，并让 ObserveModule 先于队列模块导入，保证关闭前任务仍上报。",
+    "related": [
+      "observability/overview",
+      "observability/manual-instrumentation",
+      "observability/distributed-tracing",
+      "observability/opentelemetry"
+    ]
+  },
+  {
+    "id": "observability/manual-instrumentation",
+    "titleZh": "手动埋点",
+    "summary": "SDK 的自动插桩覆盖大部分场景，TracerService 则提供手动能力：在已追踪的请求内创建自定义 span、给当前请求附加标签与上下文属性、上报被代码捕获处理的错误，以及上报自定义指标。TracerService 由 ObserveModule.forRoot() 注册的全局模块导出，可在任意模块注入。除 currentTraceId() 与指标方法外，在追踪上下文之外调用会直接抛错。",
+    "sections": [
+      {
+        "heading": "创建与标注 span",
+        "text": "createSpan(name, callback) 在当前活动 span 下创建子 span 并返回回调结果，span 时长即回调时长，需 await 想测量的内容；按调用栈自然嵌套，产生 trace 详情页的瀑布图。回调收到的 TraceSpanDelegate 可用 addTags()/setTag() 附加可搜索标签。activeSpan() 只取当前活动 span 而不新建，用于给并非自己创建的 span 打标签。"
+      },
+      {
+        "heading": "请求作用域属性",
+        "text": "setAttribute(key, value) 与 getAttribute(key) 读写 trace 自己的上下文存储，值随请求存活，可在下游任意位置读取而无需层层传参；未设置的 key 返回 undefined，两者都在追踪上下文外抛错。trace id 存放在同一存储中，可通过 getAttribute(traceIdKey) 取得。给 TracerService 传类型参数即可约束存储形状，包括嵌套路径。"
+      },
+      {
+        "heading": "捕获已处理错误",
+        "text": "逃出控制器、任务或 span 的错误会被自动记录；captureError(error, tags?) 用于被 try/catch 吞掉但仍需可见的错误，它把错误附到当前 trace，并记录可选标签；若启用 sourceContext，同样附带源码上下文。适用于支付重试、第三方同步等容错分支，让静默降级在仪表盘可见。"
+      },
+      {
+        "heading": "自定义指标",
+        "text": "三种指标：counter 只增，用于请求数、订单数；gauge 可增可减，用于队列深度、连接数、缓存命中率；summary 观测分布并计算分位数，用于延迟与载荷大小。指标不依赖 trace，可在启动、onModuleInit 与定时任务中上报；同名调用返回同一实例，支持 description、labels、initialValue、kind、sampleSize 等属性。"
+      }
+    ],
+    "keyPoints": [
+      "ObserveModule.forRoot() 注册全局模块并导出 TracerService，任意模块可直接注入。",
+      "createSpan(name, callback) 创建可嵌套子 span，其时长等于回调执行时长。",
+      "TraceSpanDelegate 提供 addTags() / setTag() 为单个 span 附加可搜索标签。",
+      "setAttribute()/getAttribute() 维护请求作用域上下文，避免层层透传参数。",
+      "captureError() 记录被捕获的异常；currentTraceId() 在无追踪时返回 null。",
+      "counter/gauge/summary 三类自定义指标不依赖追踪，可在启动与定时任务中上报。",
+      "指标支持 description、labels、initialValue、kind、sampleSize 等属性。"
+    ],
+    "snippets": [
+      {
+        "title": "创建嵌套 span 并打标签",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService {\n  constructor(private readonly tracerService: TracerService) {}\n\n  async findOne(id: string, activeUser: ActiveUserData) {\n    return this.tracerService.createSpan('cats.findOne', async (span) => {\n      span.addTags({ userId: activeUser.sub, catId: id });\n      return this.catsRepository.findOne(id);\n    });\n  }\n}"
+      },
+      {
+        "title": "上报自定义指标",
+        "lang": "typescript",
+        "code": "this.tracerService\n  .counter('cats.lookups', { description: 'Number of cat lookups' })\n  .increment();\n\nthis.tracerService\n  .gauge('cats.active.sessions', { kind: 'ratio', initialValue: 0 })\n  .increment();\n\nconst latency = this.tracerService.summary('cats.lookup.duration', {\n  description: 'Duration of cat lookups in milliseconds',\n});\nconst startedAt = performance.now();\ntry {\n  return await this.catsRepository.findOne(id);\n} finally {\n  latency.observe(performance.now() - startedAt);\n}"
+      }
+    ],
+    "api": [
+      "TracerService",
+      "createSpan()",
+      "activeSpan()",
+      "captureError()",
+      "setAttribute()",
+      "getAttribute()",
+      "currentTraceId()",
+      "counter()",
+      "gauge()",
+      "summary()"
+    ],
+    "pitfalls": [
+      "在请求、任务等被追踪上下文之外调用 createSpan() 会抛错，这是刻意设计以避免静默丢 span。",
+      "用 summary 统计耗时却只在成功路径 observe，会漏掉失败请求，使分布偏乐观。",
+      "getAttribute() 对从未设置的 key 返回 undefined，读取后要先判空再使用。"
+    ],
+    "enterprise": "把 tenantId、feature flag 等上下文用 setAttribute 存入请求上下文，避免改签名透传；为关键路径手写命名稳定的 span，并在 finally 中上报 summary 指标，保证失败样本也进入分位数。",
+    "related": [
+      "observability/sdk",
+      "observability/distributed-tracing",
+      "observability/dashboard"
+    ]
+  },
+  {
+    "id": "observability/distributed-tracing",
+    "titleZh": "分布式追踪",
+    "summary": "一条 trace 是同一 trace id 下所有应用记录的全部执行与 span。单服务内 SDK 自动生成 trace id 并让所有 span 继承；跨服务时，HTTP 调用与队列任务默认携带 trace id，较新版本的 @nestjs/microservices 内置传输也会自动传递；旧版本或 GraphQL 订阅等场景需要应用代码转发。多个服务只有共享同一 trace id，才会在仪表盘显示为一条 trace。",
+    "sections": [
+      {
+        "heading": "读取并转发 trace id",
+        "text": "TracerService.currentTraceId() 从上下文存储读取当前 trace id，与 getAttribute 不同，它在无追踪时返回 null 而不抛错，便于启动钩子等未追踪路径直接转发。转发模式始终一致：调用方把 id 放到协议的 header 或 metadata，接收方通过自定义 traceIdGenerator 读回。混合应用（HTTP + 微服务）共用一个生成器，需先判断 headers 再回退到传输上下文。"
+      },
+      {
+        "heading": "HTTP 与 gRPC",
+        "text": "HTTP 双向自动：入口默认采用合法的 x-request-id，否则生成 UUID v7；出口为未带该头的请求补上。gRPC 在 @nestjs/microservices 12.3.3+ 自动写入 x-request-id metadata，默认生成器会采用；更早版本需用 Metadata 手动 set 并覆盖 traceIdGenerator 读取。启用 openTelemetry 后，W3C traceparent 优先于无关的 x-request-id。"
+      },
+      {
+        "heading": "微服务传输与队列",
+        "text": "TCP/Redis 自 12.0.4、NATS/Kafka/RabbitMQ/MQTT 5/gRPC 自 12.3.3 可自动携带 trace id；SDK 为注册为 provider 的 ClientProxy 附加 x-request-id，接收端默认生成器采用。Bull/BullMQ 任务从入队操作继承 trace id，存放在 observeTraceId 选项，重试与 addBulk 同样保持；重复任务与 @nestjs/schedule 每次触发独立成 trace。"
+      },
+      {
+        "heading": "解读 trace 瀑布图",
+        "text": "trace 详情页把同一 trace id 下跨服务、请求与任务的执行渲染为一张瀑布图：缩进表示嵌套深度、条形长度表示时长、水平位置表示发生时间。应关注 self time 而非总时长，因为按总时长排序控制器永远第一；子 span 时长之和超过父 span 会被标记为并发执行；失败 span 有错误卡片，日志按 trace 时钟对齐。"
+      }
+    ],
+    "keyPoints": [
+      "trace 由 trace id 关联，同服务内所有 span（含手动 span）自动继承该 id。",
+      "currentTraceId() 返回当前 trace id，无追踪时返回 null，适合转发前判断。",
+      "HTTP 入站默认采用 x-request-id，出站自动补充，Observe 服务间可零代码串联。",
+      "较新 @nestjs/microservices（TCP/Redis 12.0.4+，其余 12.3.3+）自动传递 trace id。",
+      "自定义 traceIdGenerator 从传输上下文读回调用方的 x-request-id，兼容旧版本。",
+      "Bull/BullMQ 任务继承入队请求的 trace id，重试与 addBulk 同样保持。",
+      "分析瀑布图以 self time 定位耗时，重叠子 span 表示并发执行。"
+    ],
+    "snippets": [
+      {
+        "title": "读取并转发当前 trace id",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class OrdersService {\n  constructor(private readonly tracerService: TracerService) {}\n\n  async report(orderId: string) {\n    const traceId = this.tracerService.currentTraceId();\n    if (traceId) {\n      // 把 traceId 放入下游调用的 header / metadata\n    }\n  }\n}"
+      },
+      {
+        "title": "NATS 生成器覆盖",
+        "lang": "typescript",
+        "code": "import { randomUUID } from 'node:crypto';\n\n// 接收端：覆盖 createObserveModule() 的 traceIdGenerator\nexport const { ObserveModule, ObserveInstrument } = createObserveModule({\n  traceIdGenerator: (ctx: any) =>\n    ctx.getHeaders?.()?.get('x-request-id') || randomUUID(),\n});"
+      }
+    ],
+    "api": [
+      "TracerService",
+      "currentTraceId()",
+      "traceIdGenerator",
+      "createObserveModule()",
+      "x-request-id",
+      "traceparent",
+      "observeTraceId",
+      "openTelemetry"
+    ],
+    "pitfalls": [
+      "混合应用的 traceIdGenerator 需先判断 headers，再回退到传输上下文。",
+      "traceIdGenerator 属于 createObserveModule() 选项，放进 forRoot() 不会生效。",
+      "定时任务与无追踪上下文入队的任务会各自成 trace，不要期待它们并入原请求。"
+    ],
+    "enterprise": "要求所有 Nest 服务统一升级 @nestjs/microservices 并启用自动传播，非 Nest 服务通过 x-request-id 或 traceparent 加入；网关生成的 x-request-id 可让访问日志与 trace 一一对应。",
+    "related": [
+      "observability/sdk",
+      "observability/opentelemetry",
+      "observability/manual-instrumentation",
+      "observability/dashboard"
+    ]
+  },
+  {
+    "id": "observability/error-monitoring",
+    "titleZh": "错误监控",
+    "summary": "错误监控在所有 Observe 方案（含 Free）中可用，只需安装 SDK：凡是逃出控制器、解析器或队列消费者的错误都会被自动捕获，并带上出错的请求、抛错的代码位置与所属 trace。本页涵盖捕获范围、按指纹分组为 defect、新错误通知，以及从错误到可验证修复的流程；异常过滤器仍决定客户端看到什么，SDK 只是旁路观察。",
+    "sections": [
+      {
+        "heading": "自动捕获范围",
+        "text": "HTTP、GraphQL、gRPC、微服务传输以及队列与 cron 中逃逸的错误都会被记录，无需注册错误处理器，也无需在异常过滤器中调用 SDK。单个错误即失败请求的详情页：错误类、消息、堆栈与源码在前，随后是请求上下文、trace 瀑布与日志；失败 HTTP 请求还会记录少量允许的 header 与可选 body。抛错的任务记为失败运行，附失败原因与尝试次数。"
+      },
+      {
+        "heading": "源码上下文",
+        "text": "sourceContext 默认开启，SDK 读取错误堆栈中应用内帧附近的源码行并随错误上报，因此生产环境也能在仪表盘看到出错代码。要显示 TypeScript 而非编译后 JavaScript，可用 --enable-source-maps 运行，或设置 sourceMaps: true 让 SDK 自行解析。node_modules 与 Node 内部帧永远不被读取；该功能会上传少量源码，不适合外传时设 false。"
+      },
+      {
+        "heading": "分组与通知",
+        "text": "同一异常类且归一化堆栈形状相同的 occurrence 会在服务端按指纹分组为一个 error group，无论消息措辞、行号移动或部署如何变化。group 记录类与示例消息、状态、首次/最后出现、引入版本、出现次数与关联 issue。Resolved 是代码层面的声明，错误复发即重新打开；Ignored 是对噪音的决定并持续忽略。Free 也有新错误邮件与异常错误率提醒。"
+      },
+      {
+        "heading": "从错误到修复",
+        "text": "错误页的 Copy agent prompt 把堆栈、源码、trace 与日志打包成给编码 agent 的提示词；接入 MCP server 的 agent 可列 error groups、看趋势与影响用户。把 group 提升为 issue 后，Did a release fix this? 与 MCP 的 verify_fix 会基于该发布自身的请求验证修复；标记解决后系统按事故前基线继续验证，修复成立则关闭，否则带读数重开。"
+      }
+    ],
+    "keyPoints": [
+      "逃出控制器、解析器、消费者或 span 的错误自动捕获，无需注册错误处理器。",
+      "sourceContext 默认把错误堆栈附近的应用源码行随错误一起上报。",
+      "错误按异常类与归一化堆栈指纹分组为 defect，不受消息与行号变化影响。",
+      "Resolved 组在错误复发时自动 reopen，Ignored 则保持忽略，二者语义刻意不对称。",
+      "只有未处理失败才算新 defect：5xx 或没有 HTTP 状态码的入口失败。",
+      "付费方案的告警规则覆盖新错误组、错误率与任务失败率，并可直接打开 issue。",
+      "verify_fix 基于该发布自身的请求判断修复是否生效，而非抽样数据。"
+    ],
+    "snippets": [
+      {
+        "title": "开启错误源码上下文",
+        "lang": "typescript",
+        "code": "export const { ObserveModule, ObserveInstrument } = createObserveModule({\n  sourceContext: {\n    linesOfContext: 5,\n    maxFrames: 5,\n    sourceMaps: false,\n  },\n});"
+      },
+      {
+        "title": "上报已处理的错误",
+        "lang": "typescript",
+        "code": "try {\n  await this.billing.sync(accountId);\n} catch (error) {\n  await this.tracerService.captureError(error as Error, {\n    accountId,\n    retryable: 'true',\n  });\n}"
+      }
+    ],
+    "api": [
+      "sourceContext",
+      "captureError()",
+      "TracerService",
+      "serviceVersion",
+      "forwardLogs",
+      "verify_fix",
+      "get_error_trend"
+    ],
+    "pitfalls": [
+      "开启 sourceContext 会把少量应用源码上传到仪表盘；若代码不允许外传应设为 false。",
+      "业务上主动抛出的 404、校验失败仍出现在 Errors 视图，但不算新缺陷、不触发新错误告警。",
+      "未设置 serviceVersion 时无法判断错误组由哪个发布引入，回溯成本会明显增加。"
+    ],
+    "enterprise": "生产开启 sourceContext 并保证 Node 以 sourcemap 运行，让错误卡片直接显示 TS 源码；为每个服务设置 serviceVersion，把 error group 与发布关联，并用可用性 SLO 的错误预算驱动修复优先级。",
+    "related": [
+      "observability/sdk",
+      "observability/dashboard",
+      "observability/mcp-server",
+      "observability/production-rules"
+    ]
+  },
+  {
+    "id": "observability/dashboard",
+    "titleZh": "仪表盘",
+    "summary": "应用完成插桩并上报后，项目仪表盘自动生成，无需写查询或搭看板。本页说明各视图展示什么、视图之间如何嵌套切换，以及建立在遥测之上的能力——发布裁决、状态页、告警、SLO、issue 与编码 agent 交接如何配合。几乎所有遥测视图都分 Analytics、Operation、Execution 三层：聚合回答是否异常，单次执行回答为什么。",
+    "sections": [
+      {
+        "heading": "三层视图结构",
+        "text": "Analytics 是聚合列表，展示所选窗口内每条路由、任务、span 或指标的吞吐、延迟与失败率，用于发现问题；Operation 是单条路由、任务名或 span 名随时间的曲线及执行列表，用于确认问题形态；Execution 是单次请求、任务或 span 调用的详情，用于诊断。所有视图共享时间范围与应用过滤器。"
+      },
+      {
+        "heading": "遥测视图",
+        "text": "Requests 覆盖 HTTP、GraphQL、gRPC、微服务与 WebSocket 请求；Services 按 Nest 类与方法拆分自身耗时与总耗时；Errors 按操作分组并让失败信息置顶；Jobs 展示队列等待、尝试次数与失败原因；另有 Spans、Traces、Users、Custom、Releases、Logs、Profiler 与 Rules。数据库查询与出站调用在瀑布图中单独成行，不列入 Services 的类。"
+      },
+      {
+        "heading": "发布、告警与 SLO",
+        "text": "Releases 把每个 serviceVersion 与前一个对比，给出 Regression、Changed、Clean 或数据不足的裁决，并列出新增、消失或变慢的查询、出站调用与方法。告警可基于请求、任务、缺失、日志、错误、运行时、自定义指标、SLO 与生产规则，支持固定阈值或异常检测，通过邮件、Slack、Webhook、应用内通知或创建 issue 送达。"
+      },
+      {
+        "heading": "issue 与 agent",
+        "text": "SLO 由 SLI、目标百分比、错误预算与 burn rate 构成，可用 @Objective() 在处理器旁声明。issue 是项目内轻量跟踪项，可从执行页手动创建、从错误组提升或由告警自动打开，打开时带事故记录：错误或路由、起止时间、引入发布、影响用户与客户公司、修复发布的时间线，可一键复制摘要。"
+      }
+    ],
+    "keyPoints": [
+      "视图分 Analytics、Operation、Execution 三层，分别用于发现、确认与诊断问题。",
+      "Requests、Services、Errors、Jobs 等视图共享同一时间范围与应用过滤条件。",
+      "Releases 对每个 serviceVersion 给出 Regression/Changed/Clean/数据不足的裁决。",
+      "告警支持固定阈值与异常检测两种模式，可通知邮件、Slack、Webhook 或创建 issue。",
+      "SLO 由 SLI、目标百分比、错误预算与 burn rate 组成，可用 @Objective() 声明。",
+      "issue 自动附带事故记录：起止时间、引入发布、影响用户与修复发布。",
+      "Copy agent prompt 只在值得排查的失败或慢请求、含错误的 trace 上出现。"
+    ],
+    "snippets": [
+      {
+        "title": "在代码中声明 SLO",
+        "lang": "typescript",
+        "code": "@Controller('orders')\nexport class OrdersController {\n  @Post()\n  @Objective({ availability: 99.9, latency: { underMs: 300, target: 99 } })\n  create(@Body() dto: CreateOrderDto) {\n    return this.ordersService.create(dto);\n  }\n}"
+      }
+    ],
+    "api": [
+      "serviceVersion",
+      "@Objective()",
+      "forwardLogs",
+      "getUserId",
+      "runtimeMetrics",
+      "SLO",
+      "burn rate"
+    ],
+    "pitfalls": [
+      "把聚合图表当作根因：定位问题仍需打开单次 Execution，看瀑布图与 self time。",
+      "错误率告警只统计 5xx，4xx 客户端错误不会触发，也不会从可用性中扣除。",
+      "SLO 合规窗口不能超过方案的遥测保留期，否则窗口无法完整计算。"
+    ],
+    "enterprise": "以 Requests → Operation → Execution 的路径训练团队排障习惯；用 release verdict 把回归定位到具体发布，用 @Objective() 把 SLO 与路由同仓评审，并用 Copy agent prompt 交给编码 agent。",
+    "related": [
+      "observability/error-monitoring",
+      "observability/production-rules",
+      "observability/mcp-server",
+      "observability/distributed-tracing"
+    ]
+  }
+]

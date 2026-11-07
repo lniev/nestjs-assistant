@@ -1,0 +1,314 @@
+[
+  {
+    "id": "security/authentication",
+    "titleZh": "身份验证",
+    "summary": "@nestjs/authentication 在一个包里提供登录与身份识别：全局守卫配合 @Authenticate()、@CurrentUser() 等装饰器，内置会话 cookie、密码哈希、邮箱验证与重置、TOTP、magic link、Google OIDC、access 与 refresh token 及 API key。它不读用户表，用户由 credential provider 的 validate() 加载；认证状态经六个存储接口交给应用用现有 ORM 持久化。",
+    "sections": [
+      {
+        "heading": "模块与全局守卫",
+        "text": "根模块导入 AuthenticationModule.forRoot()，它只接受生命周期、密钥、OIDC client id 等普通值。credential provider、特性 handler 与数据库 store 都是应用模块中的提供者，构造函数里注册到 AuthenticationRegistry。模块注册全局 AuthenticationGuard，默认所有路由要求登录、未登录返回 401，公开路由用 @Public() 放行。"
+      },
+      {
+        "heading": "多种登录方式",
+        "text": "SessionCookieProvider 读取 cookie 并调用 validate() 加载用户，SignInService 是密码、Google 与 magic link 统一创建会话的入口。移动端用 TokenService.issue() 签发短期 JWT access token 与轮换 refresh token，重放旧 token 会撤销整个 token family。另有邮箱验证、密码重置、TOTP、OIDC 与可撤销 API key。"
+      },
+      {
+        "heading": "存储契约与原子性",
+        "text": "包定义 SessionStore、RefreshTokenStore、MfaStore、MagicLinkStore、OidcStateStore、EmailTokenStore 六个接口，应用用 Drizzle、TypeORM 或 Prisma 实现后注册。生产环境启用特性却缺 store 会启动失败；consume 类方法与 touchSession() 必须是单条条件语句，保证并发下只成功一次。"
+      },
+      {
+        "heading": "安全默认与审计",
+        "text": "会话 cookie 使用 __Host-sid 前缀与 HttpOnly、Secure、SameSite=Lax，数据库中只存 token 哈希；写请求按 Sec-Fetch-Site 与 Origin 检查，也可调用 app.enableCsrfProtection()。AuthenticationEvents 把登录、MFA 失败、refresh token 重放等事件发布到审计与告警可用的通道。"
+      }
+    ],
+    "keyPoints": [
+      "默认全局守卫要求登录，@Public() 放行的公开路由不检查认证",
+      "forRoot() 只接受普通配置值，provider 与 store 由应用模块自行注册",
+      "生命周期以毫秒计，3600 只有 3.6 秒，不是一小时",
+      "PasswordHasher 用 scrypt 哈希口令，verify() 常数时间比较",
+      "生产环境必须注册六个存储接口，缺失时应用启动失败",
+      "认证状态写入必须原子，consume 类方法用一条语句完成",
+      "用 @CurrentUser() 注入当前用户，用 AuthenticationContext 在服务层读取"
+    ],
+    "snippets": [
+      {
+        "title": "注册认证模块与凭据提供者",
+        "lang": "typescript",
+        "code": "import { Injectable, Module } from '@nestjs/common';\nimport { AuthenticationModule, AuthenticationRegistry, SessionCookieProvider, type SessionRecord } from '@nestjs/authentication';\n\n@Injectable()\nexport class SessionAuth extends SessionCookieProvider<User> {\n  constructor(\n    private readonly usersRepository: UsersRepository,\n    registry: AuthenticationRegistry,\n  ) {\n    super();\n    registry.registerProvider(this);\n  }\n\n  // 每个携带有效会话 cookie 的请求都会调用它\n  validate(session: SessionRecord) {\n    return this.usersRepository.findById(session.userId);\n  }\n}\n\n@Module({\n  imports: [\n    AuthenticationModule.forRoot({\n      session: { absoluteTtl: '14d', idleTtl: '3d' },\n      accessToken: { key: process.env.JWT_SECRET!, ttl: '15m' },\n    }),\n  ],\n  providers: [SessionAuth],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "读取当前用户并校验邮箱",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Post, Body } from '@nestjs/common';\nimport { Authenticate, CurrentUser } from '@nestjs/authentication';\n\n@Controller('orders')\nexport class OrdersController {\n  constructor(private readonly ordersService: OrdersService) {}\n\n  @Get()\n  findMine(@CurrentUser() user: User) {\n    return this.ordersService.findMine(user.id);\n  }\n\n  // 收据和物流通知发到客户邮箱，必须是已验证地址\n  @Authenticate({ verifiedEmail: true })\n  @Post()\n  place(@CurrentUser('id') userId: string, @Body('items') items: OrderItem[]) {\n    return this.ordersService.place(userId, items);\n  }\n}"
+      }
+    ],
+    "api": [
+      "AuthenticationModule",
+      "AuthenticationRegistry",
+      "SessionCookieProvider",
+      "AuthenticationGuard",
+      "@Authenticate()",
+      "@Public()",
+      "@CurrentUser()",
+      "@CurrentSession()",
+      "AuthenticationContext",
+      "PasswordHasher"
+    ],
+    "pitfalls": [
+      "把 @Public() 当授权声明：它只跳过认证，授权仍默认拒绝未声明路由。",
+      "漏设 NODE_ENV 或漏注册 store，重启后会话与 TOTP 全部丢失。",
+      "沿用 @nestjs/jwt 的秒数习惯传生命周期，3600 在这里只有 3.6 秒。"
+    ],
+    "enterprise": "面向多端登录时直接采用该包，用户表与六个 store 交给现有 Prisma、Drizzle 或 TypeORM 实现，并用官方契约测试在 PostgreSQL 上跑并发用例；关键事件接入审计与告警。",
+    "related": [
+      "security/authorization",
+      "security/rate-limiting",
+      "security/encryption-and-hashing",
+      "application/validation"
+    ]
+  },
+  {
+    "id": "security/authorization",
+    "titleZh": "授权",
+    "summary": "@nestjs/authorization 把权限表达为策略：用 @Policy() 装饰的类把「用户能否做这件事」写成方法，首参是用户、返回 boolean，只有字面量 true 才放行。AuthorizationModule.forRoot() 注册全局 AuthorizationGuard 并默认拒绝：handler 必须用 @Can()、@Can.Anyone() 或 @Public() 声明检查，忘记声明会被关闭并在启动日志列出。拒绝按是否登录映射为 401 或 403。",
+    "sections": [
+      {
+        "heading": "策略与能力",
+        "text": "策略是普通的 @Policy() 类，也是提供者，可注入 service、配置或数据访问层；第一个参数是用户、返回 boolean 的方法称为 ability。类型检查会对照 ability 的签名，因此策略能直接接收 Prisma、Drizzle 返回的普通对象。判断以严格 true 为通过，其它值都算拒绝；策略是全局共享单例，必须无状态。"
+      },
+      {
+        "heading": "路由与记录检查",
+        "text": "简单检查放在路由上：@Can(ProductPolicy, 'create') 在 handler 前调用对应 ability，需要路由参数时用 @Can 的第三个参数取出。依赖具体记录的检查应放进 service：先加载记录，再调用 authorize()，这样 controller、resolver 与队列 worker 共享规则并得到正确的 401 或 403。"
+      },
+      {
+        "heading": "管理员旁路",
+        "text": "策略可实现 before() 钩子，在每个 ability 之前运行，接收用户、ability 名称与参数；返回 true 放行、false 拒绝、不返回则交给 ability 决定，管理员旁路因此不必写进每个方法。未登录访问默认要求登录的路由由认证层返回 401，可选认证路由下策略拒绝 null 返回 401，已登录用户被拒绝返回 403。"
+      },
+      {
+        "heading": "守卫顺序与全局默认",
+        "text": "两个包都注册全局守卫，而 Nest 按模块扫描顺序执行，所以 AuthenticationModule 必须先于 AuthorizationModule 导入，否则 @Can() 看到的永远是访客。其它认证守卫应通过 APP_GUARD 注册。GraphQL 字段解析器需要 fieldResolverEnhancers，混合应用的微服务处理器需要 inheritAppConfig: true 才会执行全局守卫。"
+      }
+    ],
+    "keyPoints": [
+      "@Policy() 类中首参为 user、返回 boolean 的方法即 ability，只有 true 放行",
+      "@Can(Policy, 'ability') 声明路由检查，@Can.Anyone() 显式放行",
+      "未声明检查的 handler 默认被拒绝，启动日志会列出这些 handler",
+      "AuthorizationModule.forRoot() 注册全局 AuthorizationGuard",
+      "记录级权限应在 service 加载记录后调用 authorize() 检查",
+      "AuthenticationModule 必须先于 AuthorizationModule 导入",
+      "策略可注入依赖并用 before() 实现管理员旁路"
+    ],
+    "snippets": [
+      {
+        "title": "定义产品策略",
+        "lang": "typescript",
+        "code": "import { Policy, type PolicyBefore } from '@nestjs/authorization';\n\nconst isStaff = (user: User | null) => !!user?.roles.includes('staff');\n\n@Policy()\nexport class ProductPolicy implements PolicyBefore<User> {\n  // 返回 true 放行、false 拒绝、undefined 交给 ability 决定\n  before(user: User | null) {\n    return user?.roles.includes('admin') ? true : undefined;\n  }\n\n  // null 表示访客：所有人看已发布商品，员工还能看草稿\n  view(user: User | null, product: Product) {\n    return product.published || isStaff(user);\n  }\n\n  create(user: User | null) {\n    return isStaff(user);\n  }\n\n  delete(user: User | null) {\n    return isStaff(user);\n  }\n}"
+      },
+      {
+        "title": "在控制器上声明检查",
+        "lang": "typescript",
+        "code": "import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';\nimport { Can } from '@nestjs/authorization';\nimport { CurrentUser } from '@nestjs/authentication';\n\n@Controller('products')\nexport class ProductsController {\n  constructor(private readonly productsService: ProductsService) {}\n\n  @Get(':id')\n  @Can.Anyone()\n  findOne(@CurrentUser() user: User | null, @Param('id') id: string) {\n    return this.productsService.findOne(user, id);\n  }\n\n  @Post()\n  @Can(ProductPolicy, 'create')\n  create(@Body() input: CreateProductDto) {\n    return this.productsService.create(input);\n  }\n\n  @Delete(':id')\n  @Can(ProductPolicy, 'delete')\n  remove(@Param('id') id: string) {\n    return this.productsService.remove(id);\n  }\n}"
+      }
+    ],
+    "api": [
+      "@Policy()",
+      "@Can()",
+      "@Can.Anyone()",
+      "AuthorizationModule",
+      "AuthorizationGuard",
+      "AuthorizationService",
+      "authorize()",
+      "AuthorizationError",
+      "AuthorizationEvents",
+      "PolicyBefore"
+    ],
+    "pitfalls": [
+      "在自定义 guard 或 middleware 里调用 authorize()，错误不会被映射成 500。",
+      "记录级检查只写在路由上、记录在 handler 内才加载，容易漏检。",
+      "把 @Can.Anyone() 当作省略权限检查的捷径，它向所有已认证用户开放。"
+    ],
+    "enterprise": "按领域拆分 @Policy() 类，把记录级检查收敛到 service 并配合条件更新与幂等键防止并发绕过；接入其它认证方案时用 APP_GUARD 注册并用 e2e 测试覆盖 @Can() 路由，denied 事件接入审计。",
+    "related": [
+      "security/authentication",
+      "recipes/passport",
+      "graphql/resolvers",
+      "microservices/guards"
+    ]
+  },
+  {
+    "id": "security/encryption-and-hashing",
+    "titleZh": "加密与哈希",
+    "summary": "本页区分两种基础操作：加密是可逆双向函数，直接用 Node 内置 node:crypto，示例以 aes-256-ctr、随机 IV 与 scrypt 派生密钥完成对称加解密，Nest 不再封装额外包；哈希是单向函数，用于口令存储，推荐 @nestjs/authentication 的 PasswordHasher，它基于 scrypt 与 OWASP 参数在 libuv 线程池执行，提供 hash()、verify() 与 needsRehash()，也可改用 argon2 或 bcrypt。",
+    "sections": [
+      {
+        "heading": "对称加密",
+        "text": "node:crypto 的 createCipheriv() 与 createDecipheriv() 可加密字符串、Buffer 与流。官方示例用 AES-256-CTR：randomBytes(16) 生成随机 IV，promisify(scrypt) 从口令与 salt 派生 32 字节密钥，再依次 update() 与 final() 拼接密文。解密需要同一 key 与 IV；加密本身不防篡改，需要完整性时应改用 AES-256-GCM。"
+      },
+      {
+        "heading": "口令哈希",
+        "text": "导入 AuthenticationModule 后 PasswordHasher 就是提供者，可直接注入。hash() 返回自描述字符串，参数和随机盐随哈希保存；verify() 常数时间比较，未知用户传 undefined 会校验 dummy hash，使响应时间不泄露账号是否存在；口令先做 NFKC 归一化再哈希。"
+      },
+      {
+        "heading": "成本参数与升级",
+        "text": "计算成本由 password.logN 控制，默认 17，每加 1 成本翻倍；受 1 GiB 内存与 16 倍默认工作量上限约束，r=8 时 logN 最高 20，超限参数在创建 hasher 时抛错。needsRehash() 识别弱参数旧哈希，应在 verify() 成功后重新 hash 写回；测试环境把 logN 调到 10 可提速。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 不封装加密能力，直接使用 node:crypto 的加解密函数",
+      "AES 示例用 aes-256-ctr、随机 IV 与 scrypt 派生密钥",
+      "口令哈希使用 PasswordHasher，底层为 scrypt 与 OWASP 参数",
+      "verify() 常数时间比较，未知用户也校验 dummy hash 防时序泄露",
+      "needsRehash() 识别弱参数旧哈希，在登录成功时重新写回",
+      "logN 调节计算成本，测试环境可调低以加速",
+      "argon2 与 bcrypt 可在自定义提供者中直接调用"
+    ],
+    "snippets": [
+      {
+        "title": "对称加密与解密示例",
+        "lang": "typescript",
+        "code": "import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'node:crypto';\nimport { promisify } from 'node:util';\n\nconst iv = randomBytes(16);\nconst password = 'Password used to generate key';\n\n// 密钥长度取决于算法：aes-256 需要 32 字节\nconst key = (await promisify(scrypt)(password, 'salt', 32)) as Buffer;\nconst cipher = createCipheriv('aes-256-ctr', key, iv);\n\nconst textToEncrypt = 'Nest';\nconst encryptedText = Buffer.concat([\n  cipher.update(textToEncrypt),\n  cipher.final(),\n]);\n\nconst decipher = createDecipheriv('aes-256-ctr', key, iv);\nconst decryptedText = Buffer.concat([\n  decipher.update(encryptedText),\n  decipher.final(),\n]).toString();"
+      },
+      {
+        "title": "哈希口令并自动升级",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { PasswordHasher } from '@nestjs/authentication';\n\n@Injectable()\nexport class CredentialsService {\n  constructor(private readonly passwordHasher: PasswordHasher) {}\n\n  hashPassword(password: string) {\n    return this.passwordHasher.hash(password);\n  }\n\n  async checkPassword(password: string, storedHash: string | undefined) {\n    const ok = await this.passwordHasher.verify(password, storedHash);\n    if (ok && this.passwordHasher.needsRehash(storedHash)) {\n      // 登录成功且仍持有明文时，把旧哈希升级到当前成本\n      return { ok, upgradedHash: await this.passwordHasher.hash(password) };\n    }\n    return { ok };\n  }\n}"
+      }
+    ],
+    "api": [
+      "createCipheriv()",
+      "createDecipheriv()",
+      "randomBytes()",
+      "scrypt()",
+      "PasswordHasher",
+      "hash()",
+      "verify()",
+      "needsRehash()",
+      "logN"
+    ],
+    "pitfalls": [
+      "把哈希当成加密：哈希不可逆，需要还原明文时必须用可逆加密。",
+      "复用或写死 IV 会破坏 AES-CTR 安全性，每次加密都要用随机 IV。",
+      "hash() 拒绝空口令和超过 4 KiB 的口令，长度规则要自己先校验。"
+    ],
+    "enterprise": "口令统一走 PasswordHasher，并在登录流程中按 needsRehash() 平滑升级；需要可逆保护的字段如 TOTP secret 用 AES-256-GCM 并由 KMS 托管密钥，密文与 IV 一起入库。",
+    "related": [
+      "security/authentication",
+      "application/configuration",
+      "fundamentals/custom-providers"
+    ]
+  },
+  {
+    "id": "security/helmet",
+    "titleZh": "安全响应头",
+    "summary": "从 NestJS v12.1 起，Nest 内置 app.useSecurityHeaders()，用与 Helmet 8 相同的默认值为响应设置 Content-Security-Policy、Strict-Transport-Security、X-Frame-Options 等安全头，Express 与 Fastify 行为一致且无需额外依赖。它支持逐项开关或传配置对象、细致调整 CSP 指令，并会移除 X-Powered-By；Swagger UI、GraphiQL 等内置前端页面则需要针对性放宽策略。",
+    "sections": [
+      {
+        "heading": "启用与生效范围",
+        "text": "在 NestFactory.create() 之后调用 app.useSecurityHeaders() 即可为所有响应加安全头，包括路由响应、404、错误响应、被 CSRF 拒绝的响应与 SSE 流，同时移除 X-Powered-By。该方法必须在 init() 或 listen() 之前调用，重复调用会抛错；之前用 app.use() 注册且自行结束响应的中间件不会带上这些头。"
+      },
+      {
+        "heading": "默认头与逐项配置",
+        "text": "默认发送 Strict-Transport-Security max-age=31536000、Referrer-Policy no-referrer、X-Frame-Options SAMEORIGIN、X-Content-Type-Options nosniff 等头。每个选项可传 false、true 或配置对象，未知选项与 Helmet 旧名如 hsts 会在启动时报错并提示新名称；路由仍可用 @Header() 覆盖单个响应头。"
+      },
+      {
+        "heading": "内容安全策略",
+        "text": "默认 CSP 与 Helmet 8 相同。用 directives 修改时，指令名可写 camelCase 或 kebab-case，同名指令整体替换默认值，需要保留 self 时要显式写入，null 或 false 可删除指令；关键词、nonce 与 hash 必须带单引号。useDefaults: false 表示只发自定义指令，reportOnly 改发只上报的响应头。"
+      },
+      {
+        "heading": "内置工具兼容",
+        "text": "Swagger UI 与自身同源，默认策略即可工作，但 customJsStr 内联脚本需要 unsafe-inline，默认 upgrade-insecure-requests 会让纯 HTTP 环境下的资源加载失败，可用 upgradeInsecureRequests: null 去掉。GraphiQL 与 Apollo Sandbox 从 CDN 加载脚本，需要按环境放宽 scriptSrc 等指令，生产环境不应放宽。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 12.1+ 用内置方法替代 Helmet，两平台行为一致",
+      "必须在 init() 或 listen() 之前调用，且只能调用一次",
+      "默认设置 CSP、HSTS、Referrer-Policy 等头并移除 X-Powered-By",
+      "每个响应头可传 true、false 或配置对象，未知选项启动报错",
+      "CSP 同名指令替换默认值，关键词必须带单引号",
+      "reportOnly 只发上报头，适合灰度新策略后再收紧",
+      "路由可用 @Header() 覆盖单个响应头，Helmet 旧名需迁移"
+    ],
+    "snippets": [
+      {
+        "title": "启用安全响应头",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  // 必须在 init()/listen() 之前调用，且只能调用一次\n  app.useSecurityHeaders({\n    xFrameOptions: { action: 'deny' },\n    strictTransportSecurity: { maxAge: 63072000, preload: true },\n    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },\n  });\n\n  await app.listen(process.env.PORT ?? 3000);\n}\nbootstrap();"
+      },
+      {
+        "title": "配置内容安全策略",
+        "lang": "typescript",
+        "code": "app.useSecurityHeaders({\n  contentSecurityPolicy: {\n    useDefaults: false,\n    directives: {\n      defaultSrc: [\"'self'\"],\n      scriptSrc: [\"'self'\", 'https://cdn.example.com'],\n      styleSrc: [\"'self'\", \"'unsafe-inline'\"],\n      imgSrc: [\"'self'\", 'data:'],\n      // 生产环境走 HTTPS 时才有意义，纯 HTTP 可去掉\n      upgradeInsecureRequests: null,\n    },\n  },\n});"
+      }
+    ],
+    "api": [
+      "useSecurityHeaders()",
+      "contentSecurityPolicy",
+      "strictTransportSecurity",
+      "referrerPolicy",
+      "xFrameOptions",
+      "xContentTypeOptions",
+      "xPoweredBy",
+      "directives",
+      "reportOnly",
+      "useDefaults"
+    ],
+    "pitfalls": [
+      "在 app.use() 中间件之后才调用，这些中间件自行发出的响应不带安全头。",
+      "HTTP 环境沿用默认 CSP 策略，Swagger UI 资源加载失败。",
+      "直接搬 Helmet 旧配置，hsts、frameguard 等旧名会被拒绝，需换成新名。"
+    ],
+    "enterprise": "在 main.ts 创建应用后立刻启用安全头，把 CSP 与 HSTS 配置抽成按环境区分的工厂，生产环境先用 reportOnly 观察再收紧；API 文档只在非生产环境放宽，并在 CI 校验配置合法性。",
+    "related": [
+      "security/csrf",
+      "security/cors",
+      "openapi/introduction",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "security/cors",
+    "titleZh": "CORS",
+    "summary": "CORS（跨域资源共享）让浏览器允许页面请求其它域的资源。Nest 本身不实现 CORS，而是按底层平台转交给 Express 的 cors 或 Fastify 的 @fastify/cors 包；在应用对象上调用 enableCors()，或在 NestFactory.create() 的 options 中传 cors，都可开启并传入配置对象或按请求计算配置的回调。两个平台默认允许的方法不同，跨域调用非安全方法时必须显式配置 methods。",
+    "sections": [
+      {
+        "heading": "启用跨域",
+        "text": "最直接的方式是在应用对象上调用 app.enableCors()，它接受与底层 cors 包相同的配置对象，如 origin、methods 与 credentials，也可传根据请求返回配置的回调。另一种方式是在 NestFactory.create(AppModule, { cors: true }) 的 options 中开启，true 使用默认配置，传对象或回调可定制。两种方式通常在 main.ts 按环境配置一次。"
+      },
+      {
+        "heading": "平台默认差异",
+        "text": "Express 的 cors 与 @fastify/cors 默认值不一致：不带配置调用 enableCors() 时，Express 回应 Access-Control-Allow-Methods 为常用方法集合，Fastify 只回应 CORS 安全方法 GET,HEAD,POST。因此 Fastify 上跨域 PUT、PATCH、DELETE 会在预检阶段被拒绝。两个包都接受 methods 选项，跨域使用这些方法时应显式声明。"
+      }
+    ],
+    "keyPoints": [
+      "调用 app.enableCors()，或在 create() 的 options 中传 cors",
+      "enableCors() 接受配置对象，也可传按请求计算配置的回调",
+      "Express 底层是 cors 包，Fastify 底层是 @fastify/cors",
+      "Fastify 下跨域 PUT、PATCH、DELETE 需显式列在 methods 中",
+      "用 methods 显式覆盖允许方法，保证两平台行为一致"
+    ],
+    "snippets": [
+      {
+        "title": "显式声明允许的方法",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule, {\n    cors: {\n      origin: ['https://admin.example.com'],\n      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],\n      credentials: true,\n      maxAge: 86400,\n    },\n  });\n\n  await app.listen(process.env.PORT ?? 3000);\n}\nbootstrap();"
+      }
+    ],
+    "api": [
+      "enableCors()",
+      "NestFactory.create()",
+      "cors",
+      "methods"
+    ],
+    "pitfalls": [
+      "只调用 enableCors() 不加配置，Fastify 上跨域写方法会在预检阶段被拒绝。",
+      "CORS 允许的源不会自动成为 CSRF 的 trustedOrigins，带凭据写请求需两侧都配。",
+      "origin 通配符与 credentials 不能同时使用，浏览器会拒绝该组合。"
+    ],
+    "enterprise": "把允许的 origin 从配置中心按环境下发，生产环境避免通配符 origin；前端与 API 分域部署时同时维护 CORS 白名单与 CSRF 的 trustedOrigins。",
+    "related": [
+      "security/csrf",
+      "security/helmet",
+      "faq/http-adapter"
+    ]
+  }
+]

@@ -1,0 +1,401 @@
+[
+  {
+    "id": "exception-filters",
+    "titleZh": "异常过滤器",
+    "summary": "Nest 内置异常层处理所有未捕获异常：HttpException 及其子类由内置全局过滤器转换，未识别的异常默认返回 500 JSON。可以用 @Catch() 与 ExceptionFilter 自定义过滤器，精确控制响应格式与日志，并支持方法、控制器、全局三种作用域。本章还介绍自定义异常层次、ArgumentsHost 与机器可读错误码。",
+    "sections": [
+      {
+        "heading": "内置异常层",
+        "text": "应用代码未处理的异常会被异常层捕获并返回合适的响应。内置全局过滤器只处理 HttpException 及其子类；无法识别的异常默认返回 500 Internal server error 的 JSON。它部分兼容 http-errors：带 statusCode 与 message 的错误按原值返回。"
+      },
+      {
+        "heading": "自定义异常与过滤器",
+        "text": "业务异常继承 HttpException，Nest 自动识别并生成响应。自定义过滤器用 @Catch(Type) 声明捕获类型，实现 catch(exception, host)，通过 host.switchToHttp() 取到原生请求与响应，再用 response.status().json() 直接控制返回内容。@Catch() 留空可捕获全部异常。"
+      },
+      {
+        "heading": "绑定与依赖注入",
+        "text": "过滤器可按方法、控制器或全局作用域绑定：@UseFilters() 接受类或实例，传类由框架实例化并支持依赖注入；全局用 app.useGlobalFilters() 或 APP_FILTER 令牌，后者能注入依赖。继承 BaseExceptionFilter 并调用 super.catch() 可以只改写部分行为。"
+      },
+      {
+        "heading": "机器可读错误码",
+        "text": "status 与 message 只适合人类阅读，多个不同失败可能都表现为 400。给异常选项传 errorCode（如 WEAK_PASSWORD）会把它序列化进响应体，客户端可稳定分支处理；errorCode 与 cause、description 可组合，其中 cause 只用于日志、不进响应体。"
+      }
+    ],
+    "keyPoints": [
+      "未捕获异常由异常层处理，HttpException 及子类转成标准 JSON 响应",
+      "无法识别的异常默认返回 500 Internal server error",
+      "HttpException 第二参用 HttpStatus 枚举，第三参 options 可带 cause",
+      "继承 HttpException 定义业务异常，Nest 自动识别并生成响应",
+      "@Catch() 声明捕获类型，@UseFilters() 按方法或控制器绑定过滤器",
+      "全局过滤器用 useGlobalFilters() 或 APP_FILTER 注册才能注入依赖",
+      "errorCode 进入响应体供客户端分支，cause 仅用于日志排错"
+    ],
+    "snippets": [
+      {
+        "title": "自定义 HTTP 异常过滤器",
+        "lang": "typescript",
+        "code": "import {\n  ExceptionFilter,\n  Catch,\n  ArgumentsHost,\n  HttpException,\n} from '@nestjs/common';\nimport type { Request, Response } from 'express';\n\n@Catch(HttpException)\nexport class HttpExceptionFilter implements ExceptionFilter {\n  catch(exception: HttpException, host: ArgumentsHost) {\n    const ctx = host.switchToHttp();\n    const response = ctx.getResponse<Response>();\n    const request = ctx.getRequest<Request>();\n    const status = exception.getStatus();\n\n    response.status(status).json({\n      statusCode: status,\n      timestamp: new Date().toISOString(),\n      path: request.url,\n    });\n  }\n}"
+      },
+      {
+        "title": "抛出带错误码的业务异常",
+        "lang": "typescript",
+        "code": "import { BadRequestException, Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class UsersService {\n  async changePassword(password: string) {\n    if (password.length < 8) {\n      // errorCode 会序列化到响应体，供客户端稳定分支处理\n      throw new BadRequestException('Password is too weak', {\n        errorCode: 'WEAK_PASSWORD',\n      });\n    }\n  }\n}"
+      }
+    ],
+    "api": [
+      "HttpException",
+      "HttpStatus",
+      "@Catch()",
+      "ExceptionFilter",
+      "@UseFilters()",
+      "ArgumentsHost",
+      "APP_FILTER",
+      "BaseExceptionFilter",
+      "HttpAdapterHost"
+    ],
+    "pitfalls": [
+      "把 Error 实例作为 HttpException 的 response 不会序列化，只会返回默认体",
+      "中间件异常只有全局过滤器能捕获，方法与控制器级 @UseFilters 不生效",
+      "同时使用兜底过滤器与特定类型过滤器时，兜底过滤器必须声明在前"
+    ],
+    "enterprise": "用 APP_FILTER 注册全局兜底过滤器并继承 BaseExceptionFilter，统一输出带 errorCode 与 traceId 的错误契约；业务异常继承 HttpException 分层定义，避免在控制器里手拼错误响应。",
+    "related": [
+      "guards",
+      "pipes",
+      "interceptors",
+      "fundamentals/execution-context"
+    ]
+  },
+  {
+    "id": "pipes",
+    "titleZh": "管道",
+    "summary": "管道是带 @Injectable() 并实现 PipeTransform 的类，在路由处理器执行前对参数做转换（transformation）或校验（validation），校验失败抛出异常且处理器不会执行。Nest 内置 ParseIntPipe 等 Parse* 系列、ValidationPipe、StandardSchemaValidationPipe 与 DefaultValuePipe，也支持自定义管道。",
+    "sections": [
+      {
+        "heading": "内置管道与绑定",
+        "text": "内置管道全部从 @nestjs/common 导出，含 ParseIntPipe 等 Parse* 系列、ValidationPipe、StandardSchemaValidationPipe 与 DefaultValuePipe。把管道类传给参数装饰器（如 @Param('id', ParseIntPipe)）即可绑定；传实例则用于传选项。"
+      },
+      {
+        "heading": "自定义管道",
+        "text": "自定义管道实现 PipeTransform 的 transform(value, metadata)。metadata 含 type（body/query/param/custom）、metatype、data 与 schema 四个字段；原生类型可跳过校验，接口类型编译后 metatype 变为 Object。返回值会替换参数原值，抛异常则阻断处理器。"
+      },
+      {
+        "heading": "校验方案对比",
+        "text": "常见做法是 schema 校验：用 Zod 定义 createCatSchema，在管道中调用 schema.parse() 并在失败时抛 BadRequestException，再用 @UsePipes() 绑定到方法。class-validator 方案则给 DTO 加装饰器，配合 plainToInstance() 与 validate()。"
+      },
+      {
+        "heading": "作用域与默认值",
+        "text": "管道可参数级、方法级、控制器级或全局级绑定。内置 ValidationPipe 最适合用 useGlobalPipes() 全局应用；需要注入依赖时改用 APP_PIPE 令牌。Parse* 管道遇到 null/undefined 会抛异常，可在其前面放 DefaultValuePipe 为缺失参数补默认值。"
+      }
+    ],
+    "keyPoints": [
+      "管道在路由处理器前转换或校验参数，抛异常时处理器不会执行",
+      "内置管道含 Parse* 系列、ValidationPipe、DefaultValuePipe 等",
+      "metadata 含 type、metatype、data、schema 四个字段",
+      "传管道类由框架实例化并支持 DI，传实例用于自定义内置管道选项",
+      "@UsePipes() 支持方法级与参数级，全局用 useGlobalPipes() 或 APP_PIPE",
+      "ValidationPipe 校验自定义装饰器需开 validateCustomDecorators",
+      "DefaultValuePipe 要放在 Parse* 管道之前，为缺失参数提供默认值"
+    ],
+    "snippets": [
+      {
+        "title": "用内置管道绑定参数",
+        "lang": "typescript",
+        "code": "import {\n  Controller,\n  Get,\n  Param,\n  Query,\n  ParseIntPipe,\n  ParseBoolPipe,\n  DefaultValuePipe,\n} from '@nestjs/common';\n\n@Controller('cats')\nexport class CatsController {\n  @Get(':id')\n  findOne(@Param('id', ParseIntPipe) id: number) {\n    return this.catsService.findOne(id);\n  }\n\n  @Get()\n  findAll(\n    @Query('activeOnly', new DefaultValuePipe(false), ParseBoolPipe) activeOnly: boolean,\n    @Query('page', new DefaultValuePipe(0), ParseIntPipe) page: number,\n  ) {\n    return this.catsService.findAll({ activeOnly, page });\n  }\n}"
+      },
+      {
+        "title": "自定义 Zod 校验管道",
+        "lang": "typescript",
+        "code": "import {\n  PipeTransform,\n  ArgumentMetadata,\n  BadRequestException,\n} from '@nestjs/common';\nimport type { ZodType } from 'zod';\n\nexport class ZodValidationPipe implements PipeTransform {\n  constructor(private readonly schema: ZodType) {}\n\n  transform(value: unknown, metadata: ArgumentMetadata) {\n    try {\n      return this.schema.parse(value);\n    } catch {\n      throw new BadRequestException('Validation failed');\n    }\n  }\n}"
+      }
+    ],
+    "api": [
+      "PipeTransform",
+      "ArgumentMetadata",
+      "ValidationPipe",
+      "ParseIntPipe",
+      "ParseUUIDPipe",
+      "DefaultValuePipe",
+      "StandardSchemaValidationPipe",
+      "@UsePipes()",
+      "APP_PIPE"
+    ],
+    "pitfalls": [
+      "接口类型的参数编译后 metatype 变为 Object，class-validator 校验会失效",
+      "Parse* 管道遇到 null/undefined 会抛异常，缺失参数需先用 DefaultValuePipe",
+      "使用 zod 时必须在 tsconfig.json 开启 strictNullChecks，否则推断异常"
+    ],
+    "enterprise": "系统边界统一用全局 ValidationPipe（whiteList + transform）或 StandardSchemaValidationPipe；DTO 保持单一事实来源，业务规则校验放服务层，避免在控制器手写判断。",
+    "related": [
+      "controllers",
+      "custom-decorators",
+      "application/validation",
+      "exception-filters"
+    ]
+  },
+  {
+    "id": "guards",
+    "titleZh": "守卫",
+    "summary": "守卫是带 @Injectable() 并实现 CanActivate 的类，在中间件之后、拦截器与管道之前决定请求是否交给路由处理器，典型用途是鉴权与角色、权限控制。它能拿到 ExecutionContext，可读取处理器与控制器上的自定义元数据，因此适合基于角色等运行时条件做细粒度授权。",
+    "sections": [
+      {
+        "heading": "职责与执行时机",
+        "text": "守卫只有单一职责：根据运行时条件（权限、角色、ACL）判断请求能否进入处理器，这通常称为授权。与中间件不同，守卫拥有 ExecutionContext，知道接下来要执行哪个处理器及其元数据，因此能做路由级别决策；执行顺序为中间件之后、拦截器与管道之前。"
+      },
+      {
+        "heading": "实现 CanActivate",
+        "text": "守卫实现 canActivate(context)，返回 boolean 或 Promise/Observable。返回 true 放行，返回 false 时 Nest 抛 ForbiddenException 并返回 403；想返回别的错误应主动抛出异常。请求对象通过 context.switchToHttp().getRequest() 获取。"
+      },
+      {
+        "heading": "绑定与全局注册",
+        "text": "@UseGuards() 可绑定单个或逗号分隔的多个守卫，作用于方法或整个控制器；传类由框架实例化以便依赖注入。全局守卫用 app.useGlobalGuards() 或 APP_GUARD 令牌注册，后者能注入依赖，且可在多个模块重复注册、按顺序执行。"
+      },
+      {
+        "heading": "基于元数据授权",
+        "text": "用 Reflector.createDecorator<string[]>() 定义 @Roles() 装饰器，或使用 @SetMetadata() 把允许角色附加到处理器。守卫注入 Reflector，用 reflector.get(Roles, context.getHandler()) 读取元数据，再与 request.user.roles 比对。"
+      }
+    ],
+    "keyPoints": [
+      "守卫实现 CanActivate.canActivate()，返回布尔值或 Observable",
+      "返回 false 时 Nest 抛 ForbiddenException 返回 403，可抛出异常改响应",
+      "守卫在所有中间件之后、拦截器与管道之前执行，可拿到 ExecutionContext",
+      "@UseGuards() 可绑定单个或多个守卫到方法或控制器，传类可启用 DI",
+      "全局守卫用 useGlobalGuards() 或 APP_GUARD 注册，后者才能注入依赖",
+      "APP_GUARD 可重复注册并按序执行，是无法用 app.get() 取出的伪提供者",
+      "用 Reflector.createDecorator() 或 @SetMetadata() 附加角色元数据"
+    ],
+    "snippets": [
+      {
+        "title": "基于角色元数据的守卫",
+        "lang": "typescript",
+        "code": "import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';\nimport { Reflector } from '@nestjs/core';\n\nexport const Roles = Reflector.createDecorator<string[]>();\n\n@Injectable()\nexport class RolesGuard implements CanActivate {\n  constructor(private readonly reflector: Reflector) {}\n\n  canActivate(context: ExecutionContext): boolean {\n    const roles = this.reflector.get(Roles, context.getHandler());\n    if (!roles) {\n      return true;\n    }\n    const request = context.switchToHttp().getRequest();\n    return matchRoles(roles, request.user.roles);\n  }\n}"
+      },
+      {
+        "title": "绑定守卫与全局注册",
+        "lang": "typescript",
+        "code": "import { Controller, UseGuards, Module } from '@nestjs/common';\nimport { APP_GUARD } from '@nestjs/core';\n\n@Controller('cats')\n@UseGuards(RolesGuard)\nexport class CatsController {}\n\n@Module({\n  providers: [\n    {\n      provide: APP_GUARD,\n      useClass: RolesGuard,\n    },\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "CanActivate",
+      "@UseGuards()",
+      "ExecutionContext",
+      "Reflector",
+      "@SetMetadata()",
+      "APP_GUARD",
+      "useGlobalGuards()",
+      "ForbiddenException"
+    ],
+    "pitfalls": [
+      "中间件不知道将要执行哪个处理器，基于路由元数据的授权应交给守卫",
+      "app.useGlobalGuards() 注册的守卫无法注入依赖，应改用 APP_GUARD",
+      "matchRoles 等比较逻辑需要自己实现，Nest 只按返回值放行或拒绝"
+    ],
+    "enterprise": "鉴权分两层：AuthenticationGuard 解析 token 挂到 request.user，AuthorizationGuard 按 @Roles 元数据授权；两者都用 APP_GUARD 注册。",
+    "related": [
+      "security/authentication",
+      "security/authorization",
+      "fundamentals/execution-context",
+      "interceptors"
+    ]
+  },
+  {
+    "id": "interceptors",
+    "titleZh": "拦截器",
+    "summary": "拦截器是带 @Injectable() 并实现 NestInterceptor 的类，受 AOP 启发，可在方法执行前后插入逻辑、转换返回值与异常，甚至完全替换结果实现缓存。intercept(context, next) 中的 CallHandler.handle() 返回 RxJS Observable，用操作符即可编排整个响应流。",
+    "sections": [
+      {
+        "heading": "拦截器与 AOP",
+        "text": "拦截器可绑定方法执行前后的额外逻辑、转换返回值与异常、扩展函数行为，或按条件完全覆盖结果。intercept() 接收 ExecutionContext 与 CallHandler；调用 next.handle() 才会执行路由处理器，该调用点即 Pointcut，返回值是承载响应的 Observable。"
+      },
+      {
+        "heading": "绑定拦截器",
+        "text": "@UseInterceptors() 接受拦截器类（由框架实例化并支持 DI）或就地实例，可作用于方法或整个控制器。全局拦截器用 app.useGlobalInterceptors() 或 APP_INTERCEPTOR 令牌注册；后者能在模块上下文内解析依赖，推荐注册在拦截器所在模块。"
+      },
+      {
+        "heading": "响应与异常映射",
+        "text": "handle() 返回的流里是处理器返回值，可用 RxJS 的 map() 改写响应，例如统一包装成 { data }；用 catchError() 可以把异常替换成别的异常。注意响应映射不适用于 @Res() 库特定模式，需要开启 passthrough: true 才能与拦截器共存。"
+      },
+      {
+        "heading": "流覆盖与超时",
+        "text": "不调用 handle() 而直接返回 of(value) 会跳过处理器，这是实现缓存拦截器的思路。timeout() 操作符可限制处理时长，超时后 catchError() 判断 TimeoutError 并抛出 RequestTimeoutException；取消订阅不会中止处理器已开始的工作，需要额外清理。"
+      }
+    ],
+    "keyPoints": [
+      "拦截器实现 NestInterceptor.intercept()，以 AOP 方式包裹处理器",
+      "next.handle() 返回 RxJS Observable，不调用则处理器不会执行",
+      "可在 handle() 前做前置逻辑，用 tap/map/catchError 处理后置逻辑",
+      "@UseInterceptors() 接受类或实例，可方法级、控制器级或全局注册",
+      "全局拦截器用 useGlobalInterceptors() 或 APP_INTERCEPTOR 才能注入依赖",
+      "响应映射不适用于 @Res() 库特定模式，需启用 passthrough: true",
+      "用 of() 返回新流可跳过处理器实现缓存，timeout 可限制处理时长"
+    ],
+    "snippets": [
+      {
+        "title": "日志与耗时拦截器",
+        "lang": "typescript",
+        "code": "import {\n  Injectable,\n  NestInterceptor,\n  ExecutionContext,\n  CallHandler,\n} from '@nestjs/common';\nimport { Observable } from 'rxjs';\nimport { tap } from 'rxjs/operators';\n\n@Injectable()\nexport class LoggingInterceptor implements NestInterceptor {\n  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {\n    console.log('Before...');\n    const now = Date.now();\n\n    return next\n      .handle()\n      .pipe(tap(() => console.log(`After... ${Date.now() - now}ms`)));\n  }\n}"
+      },
+      {
+        "title": "超时处理拦截器",
+        "lang": "typescript",
+        "code": "import {\n  Injectable,\n  NestInterceptor,\n  ExecutionContext,\n  CallHandler,\n  RequestTimeoutException,\n} from '@nestjs/common';\nimport { Observable, throwError, TimeoutError } from 'rxjs';\nimport { timeout, catchError } from 'rxjs/operators';\n\n@Injectable()\nexport class TimeoutInterceptor implements NestInterceptor {\n  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {\n    return next.handle().pipe(\n      timeout(5000),\n      catchError(err => {\n        if (err instanceof TimeoutError) {\n          return throwError(() => new RequestTimeoutException());\n        }\n        return throwError(() => err);\n      }),\n    );\n  }\n}"
+      }
+    ],
+    "api": [
+      "NestInterceptor",
+      "CallHandler",
+      "ExecutionContext",
+      "@UseInterceptors()",
+      "APP_INTERCEPTOR",
+      "Observable",
+      "tap()",
+      "map()",
+      "catchError()",
+      "timeout()"
+    ],
+    "pitfalls": [
+      "不调用 next.handle() 或没返回流，路由处理器会完全不执行",
+      "tap 的回调在错误路径不触发，需要 error 回调或 finalize()",
+      "响应映射与 @Res() 库特定模式冲突，需先开启 passthrough"
+    ],
+    "enterprise": "把日志、追踪、响应包装、超时与缓存等横切关注点做成全局拦截器；耗时类需求优先接入 Observability 而非手写计时；通过 APP_INTERCEPTOR 注册以保持依赖注入。",
+    "related": [
+      "guards",
+      "pipes",
+      "fundamentals/execution-context",
+      "observability/overview"
+    ]
+  },
+  {
+    "id": "custom-decorators",
+    "titleZh": "自定义路由装饰器",
+    "summary": "路由处理器里的参数装饰器本质上把底层请求对象映射成方法参数。Nest 提供 createParamDecorator() 让开发者自定义参数装饰器，从 ExecutionContext 提取任意请求信息，并通过 data 参数接收配置；applyDecorators() 则用于把多个装饰器组合成一个语义化装饰器。",
+    "sections": [
+      {
+        "heading": "内置参数装饰器",
+        "text": "Nest 内置 @Request()/@Req()、@Response()/@Res()、@Next()、@Session()、@Param()、@Body()、@Query()、@Headers()、@HostParam()，分别映射 Express 或 Fastify 的 req、res、next 等对象。多数场景应优先用这些专用装饰器读取数据。"
+      },
+      {
+        "heading": "自定义参数装饰器",
+        "text": "用 createParamDecorator((data, ctx) => ...) 创建装饰器：ctx.switchToHttp().getRequest() 取原生请求，data 是调用装饰器时传入的值。常用于把 request.user 抽成 @User()，避免每个处理器重复读取；泛型或标注 data 类型可避免 any。"
+      },
+      {
+        "heading": "与管道协作",
+        "text": "Nest 把自定义参数装饰器与内置 @Body()、@Param() 同等对待，参数同样会流经管道。若要校验自定义装饰器取出的值，需给 ValidationPipe 传入 validateCustomDecorators: true；也可以给装饰器传 Standard Schema 兼容的 schema，交由标准校验管道处理。"
+      },
+      {
+        "heading": "装饰器组合",
+        "text": "applyDecorators() 可以把多个装饰器组合成一个：例如 @Auth('admin') 内部应用 SetMetadata 写入角色、UseGuards 绑定守卫，以及 Swagger 的 Api* 装饰器。一个声明即可复用整套横切逻辑，但 @ApiHideProperty() 不支持组合。"
+      }
+    ],
+    "keyPoints": [
+      "用 createParamDecorator() 定义参数装饰器并从 ctx 取数据",
+      "@User() 这类装饰器可复用请求对象属性，避免每个处理器重复读取",
+      "data 参数接收装饰器调用时传入的值，如 @User('firstName')",
+      "createParamDecorator<T>() 泛型或标注 data 类型，否则 data 为 any",
+      "自定义装饰器参数也走管道，需开启 validateCustomDecorators",
+      "applyDecorators() 可组合 SetMetadata 与 UseGuards 等装饰器",
+      "@ApiHideProperty() 不可组合，无法与 applyDecorators() 正常配合"
+    ],
+    "snippets": [
+      {
+        "title": "定义带参数的 @User() 装饰器",
+        "lang": "typescript",
+        "code": "import { createParamDecorator, ExecutionContext, Get } from '@nestjs/common';\n\nexport const User = createParamDecorator(\n  (data: string, ctx: ExecutionContext) => {\n    const request = ctx.switchToHttp().getRequest();\n    const user = request.user;\n    return data ? user?.[data] : user;\n  },\n);\n\n@Get()\nasync findOne(@User('firstName') firstName: string) {\n  console.log(`Hello ${firstName}`);\n}"
+      },
+      {
+        "title": "组合认证装饰器",
+        "lang": "typescript",
+        "code": "import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';\nimport { ApiBearerAuth, ApiUnauthorizedResponse } from '@nestjs/swagger';\n\nexport function Auth(...roles: Role[]) {\n  return applyDecorators(\n    SetMetadata('roles', roles),\n    UseGuards(AuthGuard, RolesGuard),\n    ApiBearerAuth(),\n    ApiUnauthorizedResponse({ description: 'Unauthorized' }),\n  );\n}\n\n@Get('users')\n@Auth('admin')\nfindAllUsers() {}"
+      }
+    ],
+    "api": [
+      "createParamDecorator()",
+      "ExecutionContext",
+      "applyDecorators()",
+      "SetMetadata()",
+      "@User()",
+      "validateCustomDecorators",
+      "@Body()",
+      "@Param()"
+    ],
+    "pitfalls": [
+      "自定义装饰器默认不参与 ValidationPipe 校验，需开启 validateCustomDecorators",
+      "从请求取值的装饰器要处理属性缺失，否则可能在运行时抛 TypeError",
+      "@ApiHideProperty() 与 applyDecorators() 不兼容，组合装饰器中不要使用"
+    ],
+    "enterprise": "把 @CurrentUser()、@TenantId()、@Auth() 等封装进公共库供所有控制器复用；自定义装饰器只做取值与元数据，不承载业务逻辑，校验交给管道。",
+    "related": [
+      "controllers",
+      "pipes",
+      "application/validation",
+      "security/authentication"
+    ]
+  },
+  {
+    "id": "deployment",
+    "titleZh": "部署",
+    "summary": "部署 NestJS 应用需要先编译 TypeScript 生成 dist，再以 node dist/main.js 启动并设置 NODE_ENV=production。本章覆盖构建产物结构、生产环境选择、健康检查、日志与可观测性、纵横向扩容、Docker 容器化，以及官方 Mau 平台的一键部署与 CI/CD。",
+    "sections": [
+      {
+        "heading": "构建与生产启动",
+        "text": "npm run build 实际调用 nest build，输出 dist/ 并以 main.js 为入口；若根目录也有 .ts 文件，入口会变成 dist/src/main.js。生产用 NODE_ENV=production node dist/main.js 启动，端口取 app.listen() 参数；nest start 会先构建再启动。"
+      },
+      {
+        "heading": "健康检查与日志",
+        "text": "健康检查用 @nestjs/terminus 实现，可检查数据库连接、外部服务与自定义指标，供负载均衡探活。日志要记录错误而非仅打印异常、避免敏感数据、使用 correlation ID 追踪跨服务请求，并按 info/warn/error 分级；生产建议输出 JSON 便于集中式日志平台解析。"
+      },
+      {
+        "heading": "扩容策略",
+        "text": "纵向扩容即给单机加 CPU、内存，实现简单但有物理上限；横向扩容增加实例分摊流量，具备冗余能力，但需要 Nginx 或云负载均衡在前面分发请求。容器化（Docker）与编排平台（Kubernetes）让多实例部署、自动扩缩与发布管理更容易。"
+      },
+      {
+        "heading": "容器化与 Mau 部署",
+        "text": "在根目录编写 Dockerfile：基于 node 镜像、执行 npm run build、EXPOSE 端口并以 node dist/main 启动，再用 .dockerignore 排除 node_modules。构建后推送到 Registry 即可部署；v12 起 CLI 提供 nest deploy，调用 @nestjs/mau 一键部署到 AWS。"
+      }
+    ],
+    "keyPoints": [
+      "npm run build 调用 nest build，输出 dist/ 并以 main.js 为入口",
+      "根目录 .ts 也会被编译，入口会变成 dist/src/main.js，部署时要注意",
+      "生产用 NODE_ENV=production node dist/main.js，端口取 PORT",
+      "健康检查推荐 @nestjs/terminus，覆盖数据库、外部服务与自定义指标",
+      "日志避免敏感数据，带 correlation ID 与级别，分布式用集中式日志",
+      "横向扩容配合负载均衡，Docker 与 Kubernetes 简化多实例部署",
+      "v12 起 CLI 提供 nest deploy，底层调用 @nestjs/mau 部署到 AWS"
+    ],
+    "snippets": [
+      {
+        "title": "NestJS 应用 Dockerfile",
+        "lang": "bash",
+        "code": "# 使用官方 Node.js 镜像作为基础镜像\nFROM node:24\n\n# 设置容器内工作目录\nWORKDIR /usr/src/app\n\n# 先复制依赖清单，利用 Docker 层缓存\nCOPY package*.json ./\nRUN npm install\n\n# 复制源码并构建\nCOPY . .\nRUN npm run build\n\n# 暴露应用端口并以编译产物启动\nEXPOSE 3000\nCMD [\"node\", \"dist/main\"]"
+      },
+      {
+        "title": "构建与生产启动命令",
+        "lang": "bash",
+        "code": "# 1. 编译 TypeScript 到 dist/（内部执行 nest build）\n$ npm run build\n\n# 2. 以生产模式启动编译产物\n$ NODE_ENV=production node dist/main.js\n\n# 3. 也可用 nest start：会先自动 build 再启动\n$ nest start\n\n# 4. 构建并运行 Docker 镜像\n$ docker build -t my-nestjs-app .\n$ docker run -p 3000:3000 my-nestjs-app"
+      }
+    ],
+    "api": [
+      "nest build",
+      "nest start",
+      "nest deploy",
+      "@nestjs/terminus",
+      "NODE_ENV",
+      "app.listen()",
+      "@nestjs/mau"
+    ],
+    "pitfalls": [
+      "根目录有 .ts 文件时入口变为 dist/src/main.js，跑 dist/main.js 会找不到",
+      "未设 NODE_ENV=production 时部分依赖库仍在开发行为，影响性能与日志",
+      "Dockerfile 的 node:24 需与项目所需 Node 版本匹配，v12 要求 20.19+"
+    ],
+    "enterprise": "上线流水线固定 build → 健康检查 → 滚动发布；用 Terminus 暴露 /health 供 LB 探活，日志输出 JSON 接入集中式平台，容器化后用 Mau 或 K8s 横向扩容。",
+    "related": [
+      "reliability/terminus",
+      "application/logger",
+      "cli/usages",
+      "observability/overview"
+    ]
+  }
+]

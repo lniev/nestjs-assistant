@@ -1,0 +1,404 @@
+[
+  {
+    "id": "microservices/basics",
+    "titleZh": "微服务概览",
+    "summary": "Nest 原生支持微服务架构：微服务本质上使用与 HTTP 不同的传输层，通过 transport 指定内置传输器（默认 TCP），可在 Redis、NATS、Kafka 等之间切换而不改业务代码。本章介绍 createMicroservice() 启动方式、@MessagePattern() 与 @EventPattern() 两种消息风格、ClientProxy 客户端的注册与 send()/emit()、请求作用域、超时、TLS 与动态配置等基础能力。",
+    "sections": [
+      {
+        "heading": "传输器与启动方式",
+        "text": "createMicroservice() 接收 { transport, options }，options 由传输器决定：TCP 暴露 host、port、retryAttempts、retryDelay、tlsOptions 等。Transport 枚举来自 @nestjs/microservices，不指定时默认 TCP。"
+      },
+      {
+        "heading": "消息模式与事件模式",
+        "text": "模式（pattern）是普通值，随消息序列化并在网络上传输，用于匹配处理器。@MessagePattern() 走请求-响应，Nest 建立数据与响应两条逻辑通道；@EventPattern() 只发布事件不等待响应，同一事件模式可注册多个处理器且被并行触发。"
+      },
+      {
+        "heading": "客户端与懒连接",
+        "text": "ClientProxy 由 ClientsModule.register()/registerAsync()、ClientProxyFactory 或 @Client() 获得，name 作注入令牌。它懒连接：首次调用前建立并复用，可用 connect() 提前连接；send() 是冷 Observable，emit() 是热 Observable。"
+      },
+      {
+        "heading": "上下文、超时与可观测",
+        "text": "请求作用域的处理器可用 @Inject(CONTEXT) 注入 RequestContext，读取 pattern、data 与传输器上下文；用 RxJS 的 timeout() 避免无限等待；client.status 与 server.status 订阅连接状态，on() 监听内部事件，unwrap() 取底层驱动实例。"
+      }
+    ],
+    "keyPoints": [
+      "微服务即使用非 HTTP 传输层的应用，默认 Transport.TCP",
+      "@MessagePattern() 走请求-响应，@EventPattern() 处理事件",
+      "ClientProxy 由 ClientsModule.register() 注入，令牌即 name",
+      "send() 返回冷 Observable 需显式订阅，emit() 返回热 Observable 立即投递",
+      "请求作用域处理器用 @Inject(CONTEXT) 注入 RequestContext",
+      "用 RxJS timeout() 设置调用超时，status 流与 on() 监听驱动状态与错误",
+      "动态配置用 AsyncMicroserviceOptions，TLS 用 tlsOptions"
+    ],
+    "snippets": [
+      {
+        "title": "启动 TCP 微服务",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { Transport, MicroserviceOptions } from '@nestjs/microservices';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.createMicroservice<MicroserviceOptions>(\n    AppModule,\n    {\n      transport: Transport.TCP,\n      options: { host: '0.0.0.0', port: 8877 },\n    },\n  );\n  await app.listen();\n}\nawait bootstrap();"
+      },
+      {
+        "title": "注册客户端并收发消息",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [\n    ClientsModule.register([\n      { name: 'MATH_SERVICE', transport: Transport.TCP },\n    ]),\n  ],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class MathService {\n  constructor(@Inject('MATH_SERVICE') private client: ClientProxy) {}\n\n  accumulate(): Observable<number> {\n    return this.client.send<number>({ cmd: 'sum' }, [1, 2, 3]);\n  }\n\n  publish() {\n    return this.client.emit('user_created', { id: 1 });\n  }\n}"
+      }
+    ],
+    "api": [
+      "NestFactory.createMicroservice()",
+      "Transport",
+      "@MessagePattern()",
+      "@EventPattern()",
+      "ClientProxy",
+      "ClientsModule.register()",
+      "ClientProxyFactory",
+      "@Payload()",
+      "@Ctx()",
+      "CONTEXT"
+    ],
+    "pitfalls": [
+      "options 因传输器而异，TCP 的 retryAttempts 默认 0，断线不会自动重连",
+      "@MessagePattern() 只在控制器内生效，写在普通 provider 上会被运行时忽略",
+      "send() 是冷 Observable，不订阅就不会真正发出消息，容易误判为服务无响应"
+    ],
+    "enterprise": "多服务项目统一用常量令牌加 ClientsModule.registerAsync() 从配置中心读取传输器参数；每次调用加 timeout() 并订阅 status，配合分布式追踪串联跨服务链路。",
+    "related": [
+      "microservices/redis",
+      "microservices/grpc",
+      "faq/hybrid-application",
+      "observability/distributed-tracing"
+    ]
+  },
+  {
+    "id": "microservices/redis",
+    "titleZh": "Redis",
+    "summary": "Redis 传输器基于 Redis 的 Pub/Sub 实现发布/订阅：消息按频道分类，发布者不知道谁会订阅，一条消息可被多个订阅者收到，且是发后即忘，没有订阅者时消息直接丢弃。本章给出 ioredis 安装、连接选项、ClientProxy 创建、RedisContext 读取频道、通配符订阅、状态订阅与底层驱动访问。",
+    "sections": [
+      {
+        "heading": "发布订阅模型",
+        "text": "Redis 传输器用频道传递消息：发布者不关心谁订阅，订阅者可订阅多个频道，一条消息可被多个订阅者收到。消息是发后即忘的，没有订阅者时会被移除且无法恢复，因此并不保证消息至少被一个服务处理。"
+      },
+      {
+        "heading": "连接选项与客户端",
+        "text": "options 支持 host、port、retryAttempts（默认 0）、retryDelay（默认 5000）、wildcards（默认 false），并透传 ioredis 全部客户端选项。客户端可用 ClientsModule.register() 传入相同选项加 name，也可用 ClientProxyFactory 或 @Client()。"
+      },
+      {
+        "heading": "通配符与上下文",
+        "text": "wildcards 为 true 时底层改用 psubscribe 与 pmessage，可在模式中写 notifications.* 之类的通配符；处理器用 @Ctx() 取得 RedisContext，通过 getChannel() 读取消息所在频道，也可用 @Payload() 取数据。"
+      },
+      {
+        "heading": "状态与底层连接",
+        "text": "client.status 与 server.status 发射 connected、disconnected、reconnecting；on('error', (client, err)) 的回调第一个参数是 'pub' 或 'sub'，因为 Redis 传输器用两条连接，unwrap() 返回 [pub, sub] 元组。"
+      }
+    ],
+    "keyPoints": [
+      "Redis 传输器基于 Pub/Sub，fire-and-forget，无订阅者时消息直接丢弃",
+      "options 支持 retryAttempts（默认 0）与 retryDelay（默认 5000）",
+      "wildcards: true 时底层改用 psubscribe/pmessage 支持通配符频道",
+      "RedisContext.getChannel() 读取消息所在频道",
+      "unwrap() 返回 [pub, sub] 两条 ioredis 连接组成的元组",
+      "on('error', (client, err)) 首参是 'pub' 或 'sub'",
+      "status 流发射 connected、disconnected、reconnecting"
+    ],
+    "snippets": [
+      {
+        "title": "启动 Redis 微服务",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { Transport, MicroserviceOptions } from '@nestjs/microservices';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.createMicroservice<MicroserviceOptions>(\n    AppModule,\n    {\n      transport: Transport.REDIS,\n      options: { host: 'localhost', port: 6379 },\n    },\n  );\n  await app.listen();\n}\nawait bootstrap();"
+      },
+      {
+        "title": "通配符订阅并读取频道",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class NotificationsController {\n  @EventPattern('notifications.*')\n  handle(@Payload() data: { id: number }, @Ctx() context: RedisContext) {\n    console.log(`Channel: ${context.getChannel()}`);\n  }\n}\n\n@Module({\n  imports: [\n    ClientsModule.register([\n      {\n        name: 'MATH_SERVICE',\n        transport: Transport.REDIS,\n        options: { host: 'localhost', port: 6379, wildcards: true },\n      },\n    ]),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "Transport.REDIS",
+      "ioredis",
+      "RedisContext",
+      "@Ctx()",
+      "@Payload()",
+      "@EventPattern()",
+      "ClientsModule.register()",
+      "ClientProxyFactory",
+      "RedisStatus",
+      "wildcards"
+    ],
+    "pitfalls": [
+      "Redis Pub/Sub 不持久化，服务离线期间的消息永久丢失，重要事件应换 Kafka",
+      "wildcards 需服务端与客户端同时开启，否则通配符模式匹配不到任何消息",
+      "retryAttempts 默认 0，生产环境连接闪断后不会自动重连"
+    ],
+    "enterprise": "Redis Pub/Sub 适合低延迟、可丢失的广播通知，如缓存失效与在线状态；关键业务事件改用 Kafka 或 Redis Streams，并用 status 与 error 监听接入监控告警。",
+    "related": [
+      "microservices/basics",
+      "microservices/mqtt",
+      "microservices/nats"
+    ]
+  },
+  {
+    "id": "microservices/mqtt",
+    "titleZh": "MQTT",
+    "summary": "MQTT 是面向低带宽、高延迟与不可靠网络的轻量发布/订阅协议，由 broker 与若干客户端组成。Nest 的 MQTT 传输器封装 MQTT.js：通过 url 连接 broker，支持 + 与 # 通配符、全局与按模式的 QoS、MqttRecordBuilder 设置 QoS 与 userProperties，并在 MqttContext 中读取原始 packet。",
+    "sections": [
+      {
+        "heading": "协议与连接",
+        "text": "MQTT 通过 broker 中转消息，服务端与客户端都用 Transport.MQTT 加 options.url。options 暴露 MQTT.js 客户端选项，另有 subscribeOptions 与 userProperties；服务端可用 maxConnectionAttempts 限制首次连接尝试，默认 -1 不限。"
+      },
+      {
+        "heading": "通配符与 QoS",
+        "text": "订阅主题可用 + 匹配单层、# 匹配多层。默认订阅使用 QoS 0，可在 subscribeOptions.qos 全局提升，也可在 @MessagePattern() 或 @EventPattern() 的第二个参数里用 { qos } 按模式覆盖，未指定的模式沿用全局值。"
+      },
+      {
+        "heading": "记录构建器",
+        "text": "MqttRecordBuilder 可设置 QoS、Retain、DUP 与 userProperties，服务端经 MqttContext.getPacket() 读取；自 v12.1.3 起处理器也可返回 record，Nest 会用其数据与选项作为回复。客户端级 userProperties 可传给 ClientProxyFactory。"
+      },
+      {
+        "heading": "状态与底层驱动",
+        "text": "status 流发射 connected、disconnected、reconnecting、closed；on('error', cb) 监听内部事件；unwrap<MqttClient>() 取得底层 MQTT.js 客户端，用于关闭连接或调用驱动特有方法。"
+      }
+    ],
+    "keyPoints": [
+      "MQTT 传输器基于 MQTT.js，用 url 连接 broker",
+      "主题通配符 + 匹配单层、# 匹配多层",
+      "默认 QoS 0，可用 subscribeOptions.qos 或按模式 { qos } 覆盖",
+      "MqttRecordBuilder 设 QoS 与 properties，getPacket() 读取",
+      "处理器可返回 record 作为回复（v12.1.3 起）",
+      "status 流发射 connected、disconnected、reconnecting、closed",
+      "unwrap<MqttClient>() 访问底层 MQTT.js 客户端"
+    ],
+    "snippets": [
+      {
+        "title": "按模式设置 QoS",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class EventsController {\n  @EventPattern('critical-events', { qos: 2 })\n  handleCritical(@Payload() data: any) {\n    // 该订阅使用 QoS 2\n  }\n\n  @EventPattern('metrics', { qos: 0 })\n  handleMetrics(@Payload() data: any) {\n    // 该订阅使用 QoS 0\n  }\n}"
+      },
+      {
+        "title": "构建带属性的 MQTT 消息",
+        "lang": "typescript",
+        "code": "const userProperties = { 'x-version': '1.0.0' };\nconst record = new MqttRecordBuilder(':cat:')\n  .setProperties({ userProperties })\n  .setQoS(1)\n  .build();\n\nclient.send('replace-emoji', record).subscribe((reply) => console.log(reply));\n\n@MessagePattern('replace-emoji')\nreplaceEmoji(@Payload() data: string, @Ctx() context: MqttContext): string {\n  const { properties: { userProperties } } = context.getPacket();\n  return userProperties['x-version'] === '1.0.0' ? 'cat' : 'kitten';\n}"
+      }
+    ],
+    "api": [
+      "Transport.MQTT",
+      "MqttContext",
+      "MqttRecordBuilder",
+      "subscribeOptions",
+      "@MessagePattern()",
+      "@EventPattern()",
+      "@Ctx()",
+      "MqttStatus",
+      "unwrap()"
+    ],
+    "pitfalls": [
+      "QoS 只在 subscribeOptions 或模式 extras 中设置，写在 options 顶层不会生效",
+      "通配符主题需与 broker 的实际层级和 ACL 一致，否则收不到任何消息",
+      "在模式 extras 中写 { qos } 才会覆盖订阅 QoS，写在 payload 中无效"
+    ],
+    "enterprise": "IoT 与边缘接入场景用 MQTT，关键指令显式设 QoS 1 或 2，并用 MqttRecordBuilder 附加版本与租户属性；配合 status 与 error 监听上报断连指标。",
+    "related": [
+      "microservices/basics",
+      "microservices/nats",
+      "microservices/redis"
+    ]
+  },
+  {
+    "id": "microservices/nats",
+    "titleZh": "NATS",
+    "summary": "NATS 是轻量高性能的云原生消息系统，支持至多一次与至少一次投递。Nest 自 v12 起面向 NATS v3，驱动换为 @nats-io/transport-node。传输器支持请求-响应自建 reply subject、事件发布订阅、queue 队列组负载均衡、通配符 subject、NatsRecordBuilder 设置 header，并提供优雅关停与状态事件。",
+    "sections": [
+      {
+        "heading": "驱动与连接选项",
+        "text": "v12 起 NATS 传输器改用 @nats-io/transport-node，需卸载旧 nats 包。options 透传 NATS 连接选项与 servers，另有 queue（队列组）、gracefulShutdown（默认 false）、gracePeriod（默认 10000 毫秒）、headers（客户端每条消息附带）。"
+      },
+      {
+        "heading": "两种消息风格",
+        "text": "请求-响应不使用 NATS 内置 Request-Reply，而是客户端在 subject 上 publish 请求并携带唯一 reply subject，响应者向该 subject 回发；事件风格使用内置 Publish-Subscribe，所有活跃订阅者都会收到，形成扇出。"
+      },
+      {
+        "heading": "队列组与通配符",
+        "text": "queue 指定队列组后，同组订阅者分摊消息，实现分布式队列式负载均衡。subject 支持通配符（如 time.us.*），处理器用 NatsContext.getSubject() 取得实际 subject，据此判断消息来源。"
+      },
+      {
+        "heading": "记录构建器与序列化",
+        "text": "NatsRecordBuilder 用 setHeaders() 附加 header，服务端经 NatsContext.getHeaders() 读取，record 上的 header 优先于客户端级 headers；v12 起自定义反序列化器收到完整消息对象，应调用 msg.json() 而不是手动解码字节。"
+      }
+    ],
+    "keyPoints": [
+      "v12 起 NATS 传输器面向 NATS v3，使用 @nats-io/transport-node 驱动",
+      "options 支持 servers、queue、gracefulShutdown、headers",
+      "请求-响应通过 publish 加唯一 reply subject 实现，不用内置 Request-Reply",
+      "事件风格基于 Publish-Subscribe，queue 队列组实现负载均衡",
+      "NatsRecordBuilder 设 header，NatsContext 读取",
+      "自定义 Deserializer 应返回 msg.json() 而非解码 Uint8Array",
+      "status 流发射 connected、disconnected、reconnecting"
+    ],
+    "snippets": [
+      {
+        "title": "使用队列组启动",
+        "lang": "typescript",
+        "code": "const app = await NestFactory.createMicroservice<MicroserviceOptions>(\n  AppModule,\n  {\n    transport: Transport.NATS,\n    options: {\n      servers: ['nats://localhost:4222'],\n      queue: 'cats_queue',\n      gracefulShutdown: true,\n      gracePeriod: 5000,\n    },\n  },\n);\nawait app.listen();"
+      },
+      {
+        "title": "带 header 请求并读取",
+        "lang": "typescript",
+        "code": "import * as nats from '@nats-io/nats-core';\n\nconst headers = nats.headers();\nheaders.set('x-version', '1.0.0');\n\nconst record = new NatsRecordBuilder(':cat:').setHeaders(headers).build();\nthis.client.send('replace-emoji', record).subscribe((reply) => console.log(reply));\n\n@MessagePattern('replace-emoji')\nreplaceEmoji(@Payload() data: string, @Ctx() context: NatsContext): string {\n  const headers = context.getHeaders();\n  return headers?.get('x-version') === '1.0.0' ? 'cat' : 'kitten';\n}"
+      }
+    ],
+    "api": [
+      "Transport.NATS",
+      "@nats-io/transport-node",
+      "NatsContext",
+      "NatsRecordBuilder",
+      "queue",
+      "gracefulShutdown",
+      "NatsStatus",
+      "Deserializer",
+      "unwrap()"
+    ],
+    "pitfalls": [
+      "从旧版本升级必须卸载 nats 包并改装 @nats-io/transport-node，否则驱动加载失败",
+      "自定义 Deserializer 仍按 Uint8Array 解码会报错，v12 起应使用 msg.json()",
+      "gracefulShutdown 默认关闭，滚动发布时未排空的消息可能丢失"
+    ],
+    "enterprise": "事件驱动型服务优先用 NATS 事件风格加 queue 组做水平扩展；开启 gracefulShutdown 保证滚动发布不丢消息，跨服务追踪用 header 传递 correlationId。",
+    "related": [
+      "microservices/basics",
+      "microservices/mqtt",
+      "observability/distributed-tracing"
+    ]
+  },
+  {
+    "id": "microservices/rabbitmq",
+    "titleZh": "RabbitMQ",
+    "summary": "RabbitMQ 传输器基于 amqplib 与 amqp-connection-manager，支持持久化队列、手动 ack、prefetch、topic exchange 通配符路由等 AMQP 能力。本章覆盖连接与队列选项、ClientProxy 创建、RmqContext 读取消息与 channel、手动确认、RmqRecordBuilder 设置 header 与优先级，以及状态订阅和底层连接访问。",
+    "sections": [
+      {
+        "heading": "选项与队列",
+        "text": "options 包括 urls、queue、queueOptions、prefetchCount、noAck（默认 true）、persistent、replyQueue 等；wildcards 为 true 时改用 topic exchange，可配 exchange、exchangeType 与 routingKey。"
+      },
+      {
+        "heading": "消息确认",
+        "text": "默认 noAck 为 true 不要求确认。设为 false 启用手动确认后，处理器必须通过 RmqContext.getChannelRef() 拿到 channel，对 getMessage() 返回的原始消息调用 ack()，否则消息不会被删除，消费端崩溃后会被重新入队。"
+      },
+      {
+        "heading": "上下文与记录构建器",
+        "text": "RmqContext 提供 getPattern()、getMessage()（含 properties、fields、content）与 getChannelRef()。RmqRecordBuilder.setOptions() 可设 headers、priority；v12.1.3 起处理器可返回 record 作为回复。"
+      },
+      {
+        "heading": "通配符与状态",
+        "text": "启用 wildcards 后 # 匹配零个或多个词、* 匹配一个词，例如 cats.# 可匹配 cats、cats.meow 与 cats.meow.purr。status 流发射 connected、disconnected、blocked、unblocked，unwrap() 返回 AmqpConnectionManager。"
+      }
+    ],
+    "keyPoints": [
+      "RabbitMQ 传输器依赖 amqplib 与 amqp-connection-manager",
+      "noAck 默认 true；设为 false 后必须用 channel.ack() 手动确认",
+      "RmqContext 提供 getPattern()、getMessage()、getChannelRef()",
+      "wildcards: true 启用 topic exchange，支持 # 与 * 路由通配符",
+      "RmqRecordBuilder.setOptions() 设置 headers、priority 等消息属性",
+      "status 流发射 connected、disconnected、blocked、unblocked",
+      "unwrap() 返回 AmqpConnectionManager 底层连接管理器"
+    ],
+    "snippets": [
+      {
+        "title": "手动确认消息",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class NotificationsController {\n  @MessagePattern('notifications')\n  getNotifications(@Payload() data: number[], @Ctx() context: RmqContext) {\n    const channel = context.getChannelRef();\n    const originalMsg = context.getMessage();\n\n    // ... 业务处理\n\n    channel.ack(originalMsg);\n  }\n}\n\nconst app = await NestFactory.createMicroservice<MicroserviceOptions>(\n  AppModule,\n  {\n    transport: Transport.RMQ,\n    options: {\n      urls: ['amqp://localhost:5672'],\n      queue: 'cats_queue',\n      noAck: false,\n      queueOptions: { durable: false },\n    },\n  },\n);"
+      },
+      {
+        "title": "设置 headers 与优先级",
+        "lang": "typescript",
+        "code": "const message = ':cat:';\nconst record = new RmqRecordBuilder(message)\n  .setOptions({\n    headers: { ['x-version']: '1.0.0' },\n    priority: 3,\n  })\n  .build();\n\nthis.client.send('replace-emoji', record).subscribe((reply) => console.log(reply));\n\n@MessagePattern('replace-emoji')\nreplaceEmoji(@Payload() data: string, @Ctx() context: RmqContext): string {\n  const { properties: { headers } } = context.getMessage();\n  return headers['x-version'] === '1.0.0' ? 'cat' : 'kitten';\n}"
+      }
+    ],
+    "api": [
+      "Transport.RMQ",
+      "amqplib",
+      "amqp-connection-manager",
+      "RmqContext",
+      "RmqRecordBuilder",
+      "noAck",
+      "prefetchCount",
+      "wildcards",
+      "RmqStatus",
+      "unwrap()"
+    ],
+    "pitfalls": [
+      "开启 noAck: false 却忘记 ack()，消息会一直 unacked 并占满 prefetch 额度",
+      "队列 durable 与消息 persistent 需同时为真，broker 重启后消息才会保留",
+      "wildcards 为 true 才使用 topic exchange，否则 # 与 * 不生效"
+    ],
+    "enterprise": "订单、支付等需可靠投递的场景用 RabbitMQ：durable 队列加 persistent 消息与 noAck: false 手动确认，配合死信队列与 prefetchCount 限流，避免消费端被打爆。",
+    "related": [
+      "microservices/basics",
+      "microservices/kafka",
+      "reliability/outbox"
+    ]
+  },
+  {
+    "id": "microservices/kafka",
+    "titleZh": "Kafka",
+    "summary": "Kafka 是分布式流平台，Nest 通过 kafkajs 实现 Kafka 传输器。它用两个 topic 承载请求与回复，客户端为 ClientKafkaProxy，需 subscribeToResponseOf() 订阅回复 topic；支持正则主题、key 与 header 控制、KafkaContext 读取分区偏移、KafkaRetriableException 重试与 commitOffsets 手动提交。",
+    "sections": [
+      {
+        "heading": "客户端与回复 topic",
+        "text": "Kafka 客户端是 ClientKafkaProxy。请求-响应会把 correlation id、reply topic、reply partition 写进消息，因此每个应用至少要占一个回复分区，否则发送会失败；Nest 内置分区分配器让已有消费者在 rebalance 时保留原回复分区，避免丢响应。"
+      },
+      {
+        "heading": "消息收发与命名",
+        "text": "入站消息的 key、value、headers 都是 Buffer，Nest 转字符串并对 object-like 内容尝试 JSON 解析，超过 16MiB 的消息会被跳过。出站可用 { key, value, headers } 结构分键与加 header。clientId 与 groupId 默认追加 -server 或 -client。"
+      },
+      {
+        "heading": "上下文与偏移量",
+        "text": "KafkaContext 提供 getTopic()、getPartition()、getMessage()、getConsumer()、getHeartbeat()。处理耗时长时调 heartbeat()，并用 consumer.commitOffsets() 提交 offset 加 1 的下一个偏移。"
+      },
+      {
+        "heading": "可重试异常",
+        "text": "默认未处理异常会被转成友好格式；KafkaRetriableException 会让 kafkajs 重投消息且不提交偏移。事件处理器的所有未处理异常都视为可重试；非 Nest 生产者写入的消息即使命中 @MessagePattern() 也按事件处理。"
+      }
+    ],
+    "keyPoints": [
+      "Kafka 客户端使用 ClientKafkaProxy，而非通用的 ClientProxy",
+      "请求-响应需 subscribeToResponseOf() 订阅回复 topic",
+      "@MessagePattern() 与 @EventPattern() 可直接接收 RegExp 主题",
+      "KafkaContext 提供 getMessage()、getConsumer() 等上下文 API",
+      "KafkaRetriableException 触发 kafkajs 重投，事件处理器异常默认可重试",
+      "关闭 autoCommit 后用 commitOffsets() 提交 offset 加 1",
+      "clientId/groupId 默认追加 -server 与 -client 后缀"
+    ],
+    "snippets": [
+      {
+        "title": "订阅回复主题并发送请求",
+        "lang": "typescript",
+        "code": "@Controller()\nexport class HeroesController implements OnModuleInit {\n  constructor(\n    @Inject('HERO_SERVICE') private readonly client: ClientKafkaProxy,\n  ) {}\n\n  async onModuleInit() {\n    this.client.subscribeToResponseOf('hero.kill.dragon');\n    await this.client.connect();\n  }\n\n  killDragon(@Payload() message: KillDragonMessage) {\n    return this.client.send('hero.kill.dragon', message);\n  }\n}"
+      },
+      {
+        "title": "手动提交偏移量",
+        "lang": "typescript",
+        "code": "@EventPattern('user.created')\nasync handleUserCreated(\n  @Payload() data: any,\n  @Ctx() context: KafkaContext,\n) {\n  // 业务逻辑\n  const { offset } = context.getMessage();\n  const partition = context.getPartition();\n  const topic = context.getTopic();\n  const consumer = context.getConsumer();\n\n  // 提交下一个待消费的偏移量\n  await consumer.commitOffsets([\n    { topic, partition, offset: (Number(offset) + 1).toString() },\n  ]);\n}"
+      }
+    ],
+    "api": [
+      "Transport.KAFKA",
+      "kafkajs",
+      "ClientKafkaProxy",
+      "KafkaContext",
+      "subscribeToResponseOf()",
+      "KafkaRetriableException",
+      "commitOffsets()",
+      "getHeartbeat()",
+      "postfixId",
+      "KafkaStatus"
+    ],
+    "pitfalls": [
+      "回复 topic 分区数必须不少于应用实例数，否则多出的实例发送消息会失败",
+      "忘记 subscribeToResponseOf() 就 send()，请求永远拿不到响应",
+      "手动提交偏移量时要提交 offset 加 1，提交当前 offset 会导致重复消费"
+    ],
+    "enterprise": "高吞吐事件流用 Kafka：按业务划分 topic 并保证关键消息有 key 以维持分区顺序；消费者关闭自动提交、按批提交偏移，重试与死信 topic 配合 KafkaRetriableException。",
+    "related": [
+      "microservices/basics",
+      "microservices/rabbitmq",
+      "reliability/outbox",
+      "observability/distributed-tracing"
+    ]
+  }
+]

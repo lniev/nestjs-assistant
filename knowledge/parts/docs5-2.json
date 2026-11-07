@@ -1,0 +1,324 @@
+[
+  {
+    "id": "security/csrf",
+    "titleZh": "CSRF 防护",
+    "summary": "CSRF（跨站请求伪造）利用浏览器自动携带 cookie 的特性，诱导用户向应用发送非预期的状态变更请求。NestJS v12.1 起内置 CSRF 防护：调用 app.enableCsrfProtection() 即可，无需额外包或改造客户端。它按 Fetch Metadata 规则检查 Sec-Fetch-Site 与 Origin/Host，拒绝跨源写请求，并支持 trustedOrigins 白名单与 exclude 路由排除；需兼容极旧浏览器时可再引入基于令牌的方案。",
+    "sections": [
+      {
+        "heading": "防护原理",
+        "text": "每个请求按顺序判断：GET、HEAD、OPTIONS 一律放行；有 Sec-Fetch-Site 时只允许 same-origin 与 none，same-site 也算跨源并拒绝；两个头都缺失视为非浏览器请求放行；否则要求 Origin 的 host 与请求 Host 一致，大小写不敏感并忽略默认端口。命中排除路由或可信源的请求豁免。"
+      },
+      {
+        "heading": "启用与配置",
+        "text": "在 NestFactory.create() 之后调用 app.enableCsrfProtection()，它注册为框架级中间件或 Fastify 的 onRequest 钩子，在路由、中间件、守卫与管道之前执行，被拒绝的请求不经过 controller 过滤器。方法只接受 trustedOrigins 与 exclude，未知选项在启动时报错；与 useSecurityHeaders() 可任意顺序调用。"
+      },
+      {
+        "heading": "排除路由与限制",
+        "text": "可信源必须是 scheme://host[:port] 形式的序列化 origin，不接受路径、查询串与通配符，也不自动继承 CORS 白名单。排除规则按 MiddlewareConsumer.exclude() 风格声明 path 或 RouteInfo，初始化时解析全局前缀与版本，匹配区分大小写并忽略查询串。局限是仅保护浏览器、GET 不检查、WebSocket 升级需自行校验 Origin。"
+      },
+      {
+        "heading": "令牌方案的场景",
+        "text": "非浏览器客户端不带这两个头，因此无需 CSRF 防护；自 2023 年起常青浏览器都会发送 Sec-Fetch-Site，只有极旧浏览器会看起来像非浏览器客户端。若仍要防御这些用户，可引入令牌方案：Express 用 csrf-csrf 的 doubleCsrf()，Fastify 用 @fastify/csrf-protection，二者都需先注册 session 或 cookie 插件。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 12.1 起用 app.enableCsrfProtection() 开启内置 CSRF 防护",
+      "按 Sec-Fetch-Site 与 Origin/Host 判断，跨源写请求返回 403",
+      "GET、HEAD、OPTIONS 永不检查，状态变更不要放在这些方法里",
+      "trustedOrigins 必须是序列化 origin，不接受路径与通配符",
+      "CORS 允许的源不会自动成为可信源，两处白名单需分别维护",
+      "exclude 支持路径、RouteInfo 或谓词，初始化时解析前缀与版本",
+      "旧浏览器需令牌方案时可接 csrf-csrf 或 @fastify/csrf-protection"
+    ],
+    "snippets": [
+      {
+        "title": "启用并配置 CSRF 防护",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { RequestMethod } from '@nestjs/common';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  app.enableCsrfProtection({\n    // 允许另一个源带着凭据发写请求\n    trustedOrigins: ['https://admin.example.com'],\n    // 支付回调等必须接受跨源 POST 的路由\n    exclude: [{ path: 'webhooks/stripe', method: RequestMethod.POST }],\n  });\n\n  await app.listen(process.env.PORT ?? 3000);\n}\nbootstrap();"
+      }
+    ],
+    "api": [
+      "enableCsrfProtection()",
+      "trustedOrigins",
+      "exclude",
+      "useSecurityHeaders()",
+      "RequestMethod"
+    ],
+    "pitfalls": [
+      "CORS 放行了前端源却忘了 trustedOrigins，带凭据的写请求仍会被 403。",
+      "把状态变更放进 GET 或 HEAD handler，这些方法永远不检查，等于绕过防护。",
+      "在 enableCsrfProtection() 之前用 app.use() 挂的中间件自行响应的请求不经过检查。"
+    ],
+    "enterprise": "前后端分域时，把前后端 origin 同时写入 CORS 与 CSRF 的 trustedOrigins，并在 main.ts 的 create() 后统一启用；webhook 与 OAuth 回调按路由排除。",
+    "related": [
+      "security/cors",
+      "security/helmet",
+      "security/authentication",
+      "http/webhooks"
+    ]
+  },
+  {
+    "id": "security/rate-limiting",
+    "titleZh": "速率限制",
+    "summary": "速率限制用于防暴力破解与接口滥用。@nestjs/throttler 通过 ThrottlerModule.forRoot() 配置 ttl（毫秒）与 limit，并用 ThrottlerGuard 以全局 APP_GUARD 或 @UseGuards() 方式绑定；支持多组命名定义、@Throttle() 按路由覆盖与 @SkipThrottle() 跳过，可按 IP、用户或自定义 getTracker 计数，并可通过自定义 ThrottlerStorage（如 Redis）在分布式部署中共享计数。",
+    "sections": [
+      {
+        "heading": "安装与基本配置",
+        "text": "安装 @nestjs/throttler 后用 ThrottlerModule.forRoot({ throttlers: [{ ttl: 60000, limit: 10 }] }) 声明规则，ttl 单位为毫秒。再以 { provide: APP_GUARD, useClass: ThrottlerGuard } 全局绑定，或挂到 controller 与路由；超限时抛 ThrottlerException，默认返回 429。"
+      },
+      {
+        "heading": "多组规则与装饰器",
+        "text": "可声明多组命名规则，例如 short 为 3 次每秒、long 为 100 次每分钟，@Throttle({ default: { limit, ttl } }) 按名称覆盖，@SkipThrottle() 可按类或方法跳过并接受 { name: boolean }。v5 起 ttl 是毫秒，可用 seconds()、minutes() 等助手函数保持可读。"
+      },
+      {
+        "heading": "代理与其它协议",
+        "text": "部署在代理后必须配置 trust proxy（Express）或 trustProxy（Fastify），否则所有请求都按代理 IP 计数。WebSocket 需继承 ThrottlerGuard 并重写 handleRequest()，从 client._socket 或 client.conn 取地址；GraphQL 则重写 getRequestResponse() 返回正确的 request 与 response。"
+      },
+      {
+        "heading": "存储与生产建议",
+        "text": "默认存储是单进程内存计数，重启或多实例会各自计数；分布式部署应传 storage 选项，使用实现 ThrottlerStorage 的 Redis 等共享存储。配置还支持 blockDuration、ignoreUserAgents、skipIf、getTracker、generateKey、setHeaders 与 IPv6 子网前缀 ipv6SubnetPrefix。"
+      }
+    ],
+    "keyPoints": [
+      "用 ThrottlerModule.forRoot() 配置 ttl 与 limit",
+      "用 APP_GUARD 全局绑定 ThrottlerGuard，超限默认返回 429",
+      "支持多组命名规则，@Throttle() 覆盖、@SkipThrottle() 跳过",
+      "v5 起 ttl 单位是毫秒，用 seconds() 等助手函数更可读",
+      "代理后必须开启 trust proxy 或 trustProxy，否则 IP 计数失真",
+      "WebSocket 与 GraphQL 需继承 ThrottlerGuard 并重写对应方法",
+      "自定义 ThrottlerStorage 可在多实例间共享计数，生产常用 Redis"
+    ],
+    "snippets": [
+      {
+        "title": "配置多组限流规则",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { APP_GUARD } from '@nestjs/core';\nimport { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';\n\n@Module({\n  imports: [\n    ThrottlerModule.forRoot({\n      throttlers: [\n        { name: 'short', ttl: seconds(1), limit: 3 },\n        { name: 'long', ttl: seconds(60), limit: 100 },\n      ],\n    }),\n  ],\n  providers: [\n    {\n      provide: APP_GUARD,\n      useClass: ThrottlerGuard,\n    },\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "ThrottlerModule",
+      "ThrottlerGuard",
+      "@Throttle()",
+      "@SkipThrottle()",
+      "ThrottlerStorage",
+      "getTracker",
+      "ipv6SubnetPrefix",
+      "seconds()"
+    ],
+    "pitfalls": [
+      "只按 IP 限流挡不住分布式撞库，登录接口应按账号或邮箱再加一层 tracker。",
+      "默认内存存储在多实例下各算各的，部署多副本后限流实际被放大数倍。",
+      "给 ttl 直接写 60 会得到 60 毫秒的窗口，v5 起单位是毫秒，不是秒。"
+    ],
+    "enterprise": "按接口区分限流维度：全局限 IP，登录与支付按账号或邮箱，开放 API 按 key，并配置 Redis 共享存储；在网关上开启 trust proxy，超限响应统一带 Retry-After 并打点监控，方便客户端退避。",
+    "related": [
+      "security/authentication",
+      "application/configuration",
+      "security/csrf"
+    ]
+  },
+  {
+    "id": "reliability/resilience",
+    "titleZh": "弹性与容错",
+    "summary": "@nestjs/resilience 把重试、超时、熔断、舱壁与降级作为装饰器加到 controller、GraphQL resolver、微服务消息处理器与 WebSocket 网关等入口，也提供策略对象给 service 内部使用。一个全局拦截器统一执行这些策略，错误按传输方式映射：HTTP 超时返回 504、熔断打开返回带 Retry-After 的 503；熔断器与舱壁状态属于进程，多实例各算各的。",
+    "sections": [
+      {
+        "heading": "核心概念与配置",
+        "text": "ResilienceModule.forRoot() 接收 defaults 与按依赖命名的 presets，阶段包括 retry、timeout、circuitBreaker、bulkhead、outboundRateLimit 与 fallback。defaults 只填充已启用阶段的字段，不会自行启用阶段；preset 由 @Resilience('carrier') 按阶段应用，装饰器在同类阶段覆盖 preset，同名熔断器在所有使用方之间共享。"
+      },
+      {
+        "heading": "重试与超时",
+        "text": "重试默认 3 次尝试并带指数退避与抖动；非幂等入口（如 POST）不会自动重试，需显式 @Retry({ idempotent: true })，否则启动时告警。@Timeout('1.5s') 为每次尝试设定预算，超时用 @Signal() 注入的 AbortSignal 中止下游调用；不透传 signal 的代码会继续在后台运行。"
+      },
+      {
+        "heading": "熔断、舱壁与降级",
+        "text": "熔断器在滑动窗口内失败率超过阈值且调用数不少于 minimumCalls 时打开，打开期间直接失败并返回 Retry-After；4xx 不计数，可用 recordIf 自定义。舱壁用 maxConcurrent 与 maxQueue 限制并发和排队，超出立即 503。@Fallback() 位于最外层，不能回调同一依赖。"
+      },
+      {
+        "heading": "服务内策略与可观测",
+        "text": "非入口代码（如定时任务）通过 ResilienceService.preset(name) 取到策略对象，execute() 会传入本次尝试的 signal 与 attempt，并可传 source 标记事件来源；非入口没有 HTTP 方法可判断，preset 的重试总会生效，因此只应包裹可重复的调用。ResilienceEvents 发布 retry、circuit-open 等事件。"
+      }
+    ],
+    "keyPoints": [
+      "用 @Resilience('carrier') 应用 preset，或单独声明 @Retry()",
+      "POST 等非安全方法默认不重试，需要 @Retry({ idempotent: true }) 显式声明",
+      "@Timeout() 超时会中止 @Signal() 注入的 AbortSignal，下游 I/O 应透传",
+      "熔断器达到失败率阈值后打开，直接返回 503 与 Retry-After",
+      "舱壁限制并发与排队，@Fallback() 位于最外层且不得回调同一依赖",
+      "service 内用 ResilienceService.preset() 取策略对象复用相同配置",
+      "ResilienceEvents 发布 retry、circuit-open 等事件用于日志与告警"
+    ],
+    "snippets": [
+      {
+        "title": "为路由应用超时与熔断",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Query } from '@nestjs/common';\nimport { Resilience, Signal, Timeout } from '@nestjs/resilience';\nimport { ShippingService } from './shipping.service.js';\n\n@Controller('shipping')\nexport class ShippingController {\n  constructor(private readonly shippingService: ShippingService) {}\n\n  @Get('quotes')\n  @Resilience('carrier')\n  @Timeout('1.5s')\n  getQuotes(@Query('orderId') orderId: string, @Signal() signal: AbortSignal) {\n    return this.shippingService.getQuotes(orderId, signal);\n  }\n}"
+      },
+      {
+        "title": "在服务内复用策略对象",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { ResilienceService, type ResiliencePolicy } from '@nestjs/resilience';\n\n@Injectable()\nexport class RepricingService {\n  private readonly policy: ResiliencePolicy;\n\n  constructor(\n    resilience: ResilienceService,\n    private readonly carrierClient: CarrierClient,\n  ) {\n    // 与路由共用同一个 carrier 熔断器，在构造时创建一次\n    this.policy = resilience.preset('carrier');\n  }\n\n  async reprice(order: Order) {\n    return this.policy.execute(\n      ({ signal }) => this.carrierClient.getQuotes(order, signal),\n      { source: 'RepricingService.reprice' },\n    );\n  }\n}"
+      }
+    ],
+    "api": [
+      "ResilienceModule",
+      "@Resilience()",
+      "@Retry()",
+      "@Timeout()",
+      "@CircuitBreaker()",
+      "@Bulkhead()",
+      "@Fallback()",
+      "@Signal()",
+      "ResilienceService",
+      "ResilienceEvents"
+    ],
+    "pitfalls": [
+      "只在入口加重试而 SDK 与 HTTP 客户端内部也重试，重试被逐层放大，故障时压垮下游。",
+      "没有给每次尝试配超时，熔断器学不到结果，挂起的调用永远不计入失败统计。",
+      "把 @Retry() 直接加在 POST 上却不声明 idempotent，重试会被跳过且只在启动日志里提示。"
+    ],
+    "enterprise": "按依赖各建 preset 与共享熔断器，给每次调用配超时并透传 AbortSignal；重试只在入口或策略层之一进行，写操作配合幂等键，并把 circuit-open 等事件接入告警。",
+    "related": [
+      "reliability/idempotency",
+      "reliability/outbox",
+      "application/task-scheduling",
+      "http/webhooks"
+    ]
+  },
+  {
+    "id": "reliability/idempotency",
+    "titleZh": "幂等键",
+    "summary": "@nestjs/idempotency 让路由、GraphQL mutation 与微服务处理器可以安全重试：客户端为每次操作生成 Idempotency-Key，服务端对每个 key 只执行一次 handler 并保存结果，后续重试直接回放同一响应。它遵循 HTTP Idempotency-Key 草案语义，由全局拦截器配合 @Idempotent() 实现；生产环境必须注册数据库或 Redis 共享存储，否则重启与多实例都会导致重复扣款。",
+    "sections": [
+      {
+        "heading": "工作原理",
+        "text": "第一次请求到来时模块获取 key 的锁并执行 handler，然后把状态与响应体写入存储；同一 key 的后续请求在首个请求仍在运行时返回 409 与 Retry-After，首个请求完成后回放保存的响应并带上 Idempotent-Replayed: true；同一 key 携带不同 body 或 URL 返回 422。"
+      },
+      {
+        "heading": "存储与锁语义",
+        "text": "包只定义 IdempotencyStore 接口，包含 acquire、complete、release、extend 四个方法，且都必须原子：acquire 用一条 INSERT 抢占空闲或过期的 key，其余方法以 owner 与过期时间做 compare-and-set。应用用 Drizzle、TypeORM 或 Redis 的 Lua 实现并注册；生产环境无 store 时启动失败。"
+      },
+      {
+        "heading": "失败与响应处理",
+        "text": "2xx 会被保存并回放；4xx HttpException（校验 400、拒付 402、已支付 409）同样保存并每次重放，因为它对同一请求是确定性结果。5xx 与未知错误不保存，key 被释放以便重试重新执行。StreamableFile、流式响应与未开启 passthrough 的 @Res() 无法回放，会释放 key 并记录警告。"
+      },
+      {
+        "heading": "作用域、TTL 与事件",
+        "text": "scope 为不同用户隔离 key 命名空间，未配置时登录用户调用会告警，Webhook 等共享场景可设 scope: false；ttl 控制结果可回放的时长，lockTtl 只在崩溃时兜底，运行中的锁会被续期。IdempotencyEvents 发布 replayed、rejected 与 lock-lost 事件，其中 lock-lost 表示结果未入库、重试可能再次执行 handler。"
+      }
+    ],
+    "keyPoints": [
+      "用 @Idempotent({ required: true }) 标注支付等不可重复的 handler",
+      "同一 key 首次运行中返回 409，完成后回放原响应并带 Idempotent-Replayed 头",
+      "key 相同但 body 或 URL 不同返回 422，防止客户端误复用",
+      "生产必须注册共享 IdempotencyStore，四个方法都必须原子",
+      "5xx 不存储并释放 key，4xx 与 2xx 存储并回放",
+      "scope 按用户隔离 key，未设置时登录用户调用会告警",
+      "IdempotencyEvents 的 lock-lost 事件意味着可能重复执行，应告警"
+    ],
+    "snippets": [
+      {
+        "title": "注册幂等模块",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { IdempotencyModule } from '@nestjs/idempotency';\nimport { OrdersModule } from './orders/orders.module.js';\n\n@Module({\n  imports: [\n    IdempotencyModule.forRoot({\n      // 守卫先运行，scope 里 req.user 已就绪，按用户隔离 key 命名空间\n      scope: (req: { user?: User }) => req.user?.id,\n      ttl: '24h',\n      lockTtl: '60s',\n    }),\n    OrdersModule,\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "标记支付路由为幂等",
+        "lang": "typescript",
+        "code": "import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';\nimport { Idempotent } from '@nestjs/idempotency';\nimport { AuthGuard } from '../auth/auth.guard.js';\nimport { CurrentUser } from '../auth/current-user.decorator.js';\nimport type { User } from './order.js';\nimport { OrdersService } from './orders.service.js';\n\n@Controller('orders')\n@UseGuards(AuthGuard)\nexport class OrdersController {\n  constructor(private readonly ordersService: OrdersService) {}\n\n  @Post(':id/pay')\n  @Idempotent({ required: true })\n  pay(\n    @Param('id') id: string,\n    @Body() dto: PayOrderDto,\n    @CurrentUser() user: User,\n  ) {\n    return this.ordersService.pay(id, dto, user);\n  }\n}"
+      }
+    ],
+    "api": [
+      "IdempotencyModule",
+      "@Idempotent()",
+      "IdempotencyStore",
+      "IdempotencyStorage",
+      "IdempotencyEvents",
+      "scope",
+      "ttl",
+      "lockTtl",
+      "keyFrom",
+      "storeIf"
+    ],
+    "pitfalls": [
+      "客户端每次重试都生成新 key，服务端看到的是多个不同请求，重复扣款依旧发生。",
+      "使用内存存储上线：重启或换实例后同一 key 的记录消失，重试会再次执行 handler。",
+      "没有配置 scope，一个用户的 key 可能回放出另一个用户的响应，造成越权泄露。"
+    ],
+    "enterprise": "对支付、下单、退款接口设 required: true 并按用户 scope 隔离，key 在客户端发起操作时生成并持久化；用数据库或 Redis 实现原子 store 并跑契约测试，监控 lock-lost 与 replayed。",
+    "related": [
+      "reliability/resilience",
+      "reliability/outbox",
+      "security/cors",
+      "data/drizzle"
+    ]
+  },
+  {
+    "id": "reliability/outbox",
+    "titleZh": "事务性发件箱",
+    "summary": "@nestjs/outbox 解决双写问题：把事件当作数据库中的一行，与业务数据在同一个事务里提交，再由中继（relay）可靠投递。Outbox.add() 接收事务句柄，消息与订单同提交或同回滚；中继用租约、fencing 与重试保证至少一次投递，多次失败进入死信表，消费者用 inbox 去重。它支持进程内 @OnOutboxMessage() 处理器与 ClientProxyTransport 跨微服务发布，并要求在应用自己的数据库上注册 store。",
+    "sections": [
+      {
+        "heading": "为什么需要 Outbox",
+        "text": "保存订单与发布事件是跨两个系统的两次写入：先保存后发布在崩溃时会丢事件，先发布后保存在插入失败时会发布不存在的事件，失败重试又会造成重复发送。事务性 Outbox 把消息变成与订单同库同事务的一行，中继只发布已提交的消息；副作用是至少一次投递，因此消费端必须维护 inbox 去重。"
+      },
+      {
+        "heading": "写入与投递流程",
+        "text": "业务代码在数据库事务中调用 outbox.add(tx, messages)，消息包含 topic、payload 与可选的 key、headers、id、delay；事务提交后调用 notify() 可立即唤醒中继，否则要等下一个 pollInterval。中继按批次 claim 消息并写入租约，用 publishTimeout 限制单次发布，失败按指数退避重试，超过 attempts 后进入死信表。"
+      },
+      {
+        "heading": "进程内处理器与微服务",
+        "text": "@OnOutboxMessage(topic, { consumer }) 在单例 provider 上声明进程内处理器，默认由 inbox 跳过已处理消息；ctx.processInTransaction(tx, work) 可把去重记录与业务写入放进同一事务，实现同库恰好一次，inbox: false 则退化为至少一次。跨服务用 ClientProxyTransport 把消息以 envelope 形式 emit。"
+      },
+      {
+        "heading": "多实例与可靠性保证",
+        "text": "多个中继实例通过 claim 租约与 SKIP LOCKED 分配消息，后续写入必须携带租约 token，避免暂停的实例覆盖他人。同一 key 的消息按事务提交顺序发布，死信后该 key 不再阻塞后续消息。整体保证是至少一次，消费者 inbox 吸收重复；生产要监控 lagMs 与 deadLetters。"
+      }
+    ],
+    "keyPoints": [
+      "在业务事务中调用 outbox.add(tx, message)，消息与业务数据一起提交",
+      "中继发布已提交消息，失败按退避重试，超过次数进入死信表",
+      "消费者用 @OnOutboxMessage() 的 inbox 去重，实现至少一次接收",
+      "同库写入可用 ctx.processInTransaction() 把去重与业务写在同一事务",
+      "多实例靠租约 claim 与 fencing token 避免重复投递与旧实例覆盖",
+      "同一 key 的消息按提交顺序发布，死信消息会让出该 key",
+      "生产环境必须注册数据库 store，并为 relay 配置告警与迁移"
+    ],
+    "snippets": [
+      {
+        "title": "在事务中添加 Outbox 消息",
+        "lang": "typescript",
+        "code": "import { BadRequestException, Injectable } from '@nestjs/common';\nimport { InjectDrizzle } from '@nestjs/drizzle';\nimport { Outbox } from '@nestjs/outbox';\nimport type { Database, Transaction } from '../database/drizzle.js';\nimport { orders } from '../database/schema.js';\n\n@Injectable()\nexport class OrdersService {\n  constructor(\n    @InjectDrizzle() private readonly db: Database,\n    private readonly outbox: Outbox<Transaction>,\n  ) {}\n\n  async placeOrder(dto: PlaceOrderDto): Promise<Order> {\n    const order = await this.db.transaction(async (tx) => {\n      await tx.insert(orders).values(orderData);\n      await this.outbox.add(tx, [\n        { topic: 'order.placed', payload: orderData },\n        { topic: 'analytics.order.placed', key: orderData.id, payload: orderData },\n      ]);\n      return orderData;\n    });\n    this.outbox.notify(); // 立即唤醒中继\n    return order;\n  }\n}"
+      },
+      {
+        "title": "声明进程内 Outbox 处理器",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { OnOutboxMessage } from '@nestjs/outbox';\nimport { MailerService } from './mailer.service.js';\n\n@Injectable()\nexport class OrderEmailsHandler {\n  constructor(private readonly mailerService: MailerService) {}\n\n  // 同一个 consumer 的 inbox 会跳过已经处理过的消息\n  @OnOutboxMessage('order.placed', { consumer: 'order-confirmation-email' })\n  async sendConfirmation(order: Order) {\n    await this.mailerService.sendOrderConfirmation(order);\n  }\n}"
+      }
+    ],
+    "api": [
+      "OutboxModule",
+      "Outbox",
+      "add()",
+      "notify()",
+      "@OnOutboxMessage()",
+      "ClientProxyTransport",
+      "PostgresOutboxStore",
+      "OutboxEvents",
+      "OutboxDeadLetters",
+      "NonRetryableMessageError"
+    ],
+    "pitfalls": [
+      "把数据库连接而不是事务句柄传给 add()，消息会以自动提交写入，双写问题原样保留。",
+      "事务提交后忘记 notify()，消息要等到下一次轮询才发出，增加延迟与丢单窗口。",
+      "consumer 名称随意变更：inbox 以 consumer 为键，改名后所有历史消息都会被当作新消息。"
+    ],
+    "enterprise": "核心写路径统一用 outbox.add(tx, ...) 把事件与业务写入同事务，进程内副作用交给 inbox，跨服务用 ClientProxyTransport 发布；数据库 store 纳入迁移并监控 lagMs 与 deadLetters。",
+    "related": [
+      "reliability/idempotency",
+      "reliability/workflows",
+      "reliability/resilience",
+      "microservices/basics"
+    ]
+  }
+]

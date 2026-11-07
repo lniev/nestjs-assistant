@@ -1,0 +1,44 @@
+{
+  "id": "s2-5",
+  "itemId": "s2-5",
+  "stageId": "s2",
+  "stageIndex": 2,
+  "itemIndex": 5,
+  "stageTitleZh": "请求生命周期组件",
+  "titleZh": "自定义装饰器与执行上下文",
+  "title": "自定义装饰器与执行上下文",
+  "level": "L2",
+  "goal": "用 createParamDecorator 与 ExecutionContext 封装 @CurrentUser、@RequestId，让参数表达业务语义。",
+  "practice": "在操练场用 @CurrentUser() 替代 @Req()，并支持只取某个字段。",
+  "deliverable": "可复用的 @CurrentUser 与 @RequestId 装饰器",
+  "accept": "控制器直接拿到用户与请求 ID，不再注入整个 @Req()",
+  "minutes": 240,
+  "pageIds": [
+    "custom-decorators",
+    "fundamentals/execution-context"
+  ],
+  "summary": "认证中间件 + @CurrentUser()/@RequestId() 两个 createParamDecorator 示例：控制器直接拿到用户对象、单个字段与请求 ID，不再注入 @Req()；/context 还演示 ExecutionContext.getHandler()/getClass() 的用法。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/me",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/me/role",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/context",
+      "expect": 200
+    }
+  ]
+}

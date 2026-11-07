@@ -1,0 +1,8 @@
+# NestJS 助手 — Loader patch.
+# One Host row: the knowledge tool, the /nest-assistant/api routes and the virtual
+# NestJS playground runtime live in the Host half (`index.js`); the panel is the
+# Client half (`client.js`, see `dsh.client` in package.json).
+- insert:
+    - id: nest-assistant
+      name: '@local/nest-assistant'
+      config: {}

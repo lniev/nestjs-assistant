@@ -1,0 +1,400 @@
+[
+  {
+    "id": "mcp/overview",
+    "titleZh": "MCP 概述",
+    "summary": "@nestjs/mcp 把 Nest 应用变成 MCP 服务器，把 provider 上的方法暴露为 tools、resources 与 prompts。MCP 是 AI 助手访问应用的方式：助手作为客户端，应用作为服务器，通过 Streamable HTTP 或 stdio 通信。用 McpModule.forRoot() 注册 name、version 与 instructions 后，模块启动时扫描装饰器并在配置非法时直接失败。",
+    "sections": [
+      {
+        "heading": "MCP 与三类原语",
+        "text": "MCP 是助手访问应用的标准协议：应用运行 MCP 服务器，向作为客户端的助手暴露三类东西——tools 是模型带参数调用的动作，resources 是按 URI 读取的数据，prompts 是用户选择的模板。三者都是 provider 方法加一个装饰器。"
+      },
+      {
+        "heading": "注册模块与端点",
+        "text": "在根模块导入 McpModule.forRoot({ name, version, instructions })；include 可把扫描范围限制在列出的模块。HTTP 端点默认在 /mcp，与业务路由并列；模块在启动时扫描所有 provider 上的 @Tool()、@Resource() 等装饰器并生成 JSON Schema。"
+      },
+      {
+        "heading": "一次调用的处理流程",
+        "text": "每个 HTTP 请求独立处理：先校验 access token 与 scopes，再由 SDK 按 schema 校验参数，然后依次运行守卫、拦截器与管道，执行方法，最后把返回值作为结果、把异常交给异常过滤器。请求之间不保留状态，可部署多实例。"
+      },
+      {
+        "heading": "异步配置与选项",
+        "text": "forRootAsync() 支持 useFactory、useClass 与 useExisting；path、endpointVersion、decorators 与 imports 必须留在顶层。其余选项覆盖 HTTP 行为（legacy、responseMode、allowedOrigins、allowedHosts）与 auth、stdio。"
+      }
+    ],
+    "keyPoints": [
+      "MCP 服务器通过 tools、resources、prompts 三类原语向助手暴露能力",
+      "forRoot() 需要 name、version，instructions 告诉模型如何使用",
+      "启动时扫描 @Tool()、@Resource()、@Prompt() 等装饰器并生成 schema",
+      "调用依次经过 OAuth 校验、schema 校验、守卫、拦截器与异常过滤器",
+      "HTTP 端点默认在 /mcp，每请求独立无状态，可水平扩展",
+      "include 限制扫描模块，forRootAsync() 支持工厂、类与现有 provider",
+      "支持 Streamable HTTP 与 stdio 两种传输，同一模块可同时服务两者"
+    ],
+    "snippets": [
+      {
+        "title": "注册 MCP 模块",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { McpModule } from '@nestjs/mcp';\nimport { OrdersModule } from './orders/orders.module';\n\n@Module({\n  imports: [\n    McpModule.forRoot({\n      name: 'cat-store',\n      version: '1.0.0',\n      instructions:\n        'Look orders up with find-order before changing them.',\n    }),\n    OrdersModule,\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "用工厂异步配置",
+        "lang": "typescript",
+        "code": "import { McpModule } from '@nestjs/mcp';\nimport { ConfigModule, ConfigService } from '@nestjs/config';\n\nMcpModule.forRootAsync({\n  imports: [ConfigModule, AuthModule],\n  inject: [ConfigService],\n  useFactory: (config: ConfigService) => ({\n    name: 'cat-store',\n    version: config.getOrThrow<string>('VERSION'),\n    auth: {\n      verifier: IdentityProviderTokenVerifier,\n      resource: config.getOrThrow<string>('MCP_RESOURCE'),\n      authorizationServers: [config.getOrThrow<string>('IDP_URL')],\n    },\n  }),\n});"
+      }
+    ],
+    "api": [
+      "McpModule.forRoot()",
+      "McpModule.forRootAsync()",
+      "@Tool()",
+      "@Resource()",
+      "@Prompt()",
+      "include",
+      "auth",
+      "instructions"
+    ],
+    "pitfalls": [
+      "Zod 3 schema 启动时会被拒绝，需 Zod 4.2+ 或能产出 JSON Schema 的库",
+      "重名工具、非法名称、请求作用域 provider、scopes 无 auth 都会启动失败",
+      "请求之间不保留状态，不要在模块里跨请求缓存会话数据"
+    ],
+    "enterprise": "把 MCP 服务器当应用对外的一个入口：复用现有 HTTP 守卫与身份提供方做 OAuth 资源服务器，用 include 只暴露必要模块，工具描述按模型可读的标准撰写并保持无状态部署。",
+    "related": [
+      "mcp/primitives",
+      "mcp/transports",
+      "mcp/testing",
+      "ai/tools"
+    ]
+  },
+  {
+    "id": "mcp/primitives",
+    "titleZh": "MCP 原语",
+    "summary": "MCP 服务器暴露三类原语：tools 是模型调用的动作，resources 是客户端按 URI 读取的数据，prompts 是用户选择的模板，每个都是 provider 的方法加一个装饰器，并经过与路由相同的守卫、拦截器、管道和异常过滤器。@Tool() 用 inputSchema 描述参数，@Resource() 与 @ResourceTemplate() 提供数据，@Prompt() 定义消息模板；方法的第二个参数是 McpContext，可读取 authInfo、request、signal 并上报进度。",
+    "sections": [
+      {
+        "heading": "工具（Tools）",
+        "text": "@Tool() 的 inputSchema 会作为 JSON Schema 发给客户端并在调用前校验参数，outputSchema 用于校验结构化结果。返回值可以是字符串、任意值、CallToolResult 或 undefined，分别映射为文本块、structuredContent、原样结果或空结果；名称默认取方法名。"
+      },
+      {
+        "heading": "资源与提示",
+        "text": "@Resource() 服务固定 URI，@ResourceTemplate() 按 RFC 6570 模板匹配并把变量传给方法；字符串按 mimeType 发送，Buffer 作为二进制，其余按 JSON。@Prompt() 用 argsSchema 收集参数，返回字符串、消息数组或 GetPromptResult。"
+      },
+      {
+        "heading": "调用上下文",
+        "text": "方法的第二个参数是 McpContext，含 kind、name、uri、authInfo、request、transport、era、signal、reportProgress() 与 server。通过 ctx.signal 传递取消信号、用 ctx.reportProgress() 上报进度，方法返回值即 MCP 结果。"
+      },
+      {
+        "heading": "增强器与授权",
+        "text": "调用经过类、方法或全局绑定的守卫、拦截器、管道和过滤器，执行上下文类型是 'mcp'，用 McpExecutionContext.create() 读取输入、上下文与 authInfo。配置 auth 后服务器成为 OAuth 2.1 资源服务器，verifier 校验 token，scopes 在方法执行前检查。"
+      }
+    ],
+    "keyPoints": [
+      "@Tool() 的 inputSchema 以 JSON Schema 公开给模型并在调用前校验参数",
+      "返回值按类型映射为文本、structuredContent、JSON 文本块或 CallToolResult",
+      "@Resource() 服务固定 URI，@ResourceTemplate() 按 RFC 6570 匹配",
+      "@Prompt() 用 argsSchema 收集参数，可返回字符串、消息数组或结果对象",
+      "McpContext 提供 authInfo、request、signal 与 reportProgress",
+      "调用经过守卫、拦截器、管道与异常过滤器，上下文类型为 'mcp'",
+      "auth 使服务器成为 OAuth 2.1 资源服务器，scopes 在方法执行前校验"
+    ],
+    "snippets": [
+      {
+        "title": "定义带 schema 的工具",
+        "lang": "typescript",
+        "code": "import { Injectable, NotFoundException } from '@nestjs/common';\nimport { Tool, type McpContext } from '@nestjs/mcp';\nimport * as z from 'zod';\nimport { OrdersService } from './orders.service';\n\n@Injectable()\nexport class OrdersTools {\n  constructor(private readonly orders: OrdersService) {}\n\n  @Tool({\n    name: 'find-order',\n    description: 'Find an order by its id, or the latest orders of a customer',\n    inputSchema: z.object({\n      orderId: z.string().optional().describe('The order id, such as ord_123'),\n      email: z.email().optional().describe(\"The customer's email\"),\n    }),\n    annotations: { readOnlyHint: true },\n  })\n  async find({ orderId, email }: { orderId?: string; email?: string }) {\n    const orders = orderId\n      ? [await this.orders.findById(orderId)]\n      : await this.orders.latestFor(email!);\n    if (orders.length === 0) {\n      throw new NotFoundException('No such order');\n    }\n    return orders;\n  }\n}"
+      },
+      {
+        "title": "定义资源与资源模板",
+        "lang": "typescript",
+        "code": "import { Resource, ResourceTemplate } from '@nestjs/mcp';\n\n@Resource({\n  uri: 'catalog://products',\n  description: 'Every product and its stock',\n  mimeType: 'application/json',\n})\ncatalog() {\n  return this.catalog.all();\n}\n\n@ResourceTemplate({\n  uriTemplate: 'orders://{orderId}',\n  description: 'One order',\n  mimeType: 'application/json',\n})\nasync order({ orderId }: { orderId: string }) {\n  const order = await this.orders.findById(orderId);\n  if (!order) {\n    throw new NotFoundException();\n  }\n  return order;\n}"
+      }
+    ],
+    "api": [
+      "@Tool()",
+      "@Resource()",
+      "@ResourceTemplate()",
+      "@Prompt()",
+      "McpContext",
+      "McpExecutionContext",
+      "McpTokenVerifier",
+      "inputSchema",
+      "outputSchema",
+      "CallToolResult"
+    ],
+    "pitfalls": [
+      "工具名称需符合 MCP 命名规则且不可重名，否则应用启动失败",
+      "请求作用域 provider 不能用于 MCP 方法，调用信息应从 ctx 读取",
+      "HTTP 下向 2025 版客户端发起 elicitation 会失败，端点不保留会话"
+    ],
+    "enterprise": "把工具描述与参数的 .describe() 当成模型可见的 API 文档来写；读操作标注 readOnlyHint，写操作设计幂等与审计；高危动作通过 scopes 与守卫分层管控。",
+    "related": [
+      "mcp/overview",
+      "mcp/testing",
+      "ai/tools",
+      "mcp/migration"
+    ]
+  },
+  {
+    "id": "mcp/transports",
+    "titleZh": "MCP 传输方式",
+    "summary": "MCP 服务器通过两种传输提供：从现有 Nest 应用提供的 Streamable HTTP，供网络上的助手连接；以及从独立应用上下文启动的 stdio，供把服务器作为本地进程启动的助手使用。HTTP 端点就是一个控制器路由，受全局前缀、版本、中间件、CORS 和 HTTP 守卫约束，且每请求无状态；stdio 用 McpStdioServer 与 McpStdioLogger，凭证来自环境变量。生产环境还要关注 Origin 与 Host 校验、body 大小与 CORS。",
+    "sections": [
+      {
+        "heading": "HTTP 端点",
+        "text": "端点由模块添加的控制器提供，路径由 path 决定，默认 mcp；全局前缀、版本、中间件、CORS 与 HTTP 守卫都像普通路由一样生效。endpointVersion 设置版本，decorators 可给端点加类装饰器，例如 [Public()] 或 [UseGuards(ApiKeyGuard)]。"
+      },
+      {
+        "heading": "stdio 传输",
+        "text": "助手可在用户机器上把服务器作为本地进程启动。用 createApplicationContext() 创建独立上下文，注入 McpStdioServer 并调用 listen()；McpStdioLogger 把日志写到 stderr，因为 stdout 只承载协议，listen() 在客户端关闭 stdin 时返回。"
+      },
+      {
+        "heading": "生产环境检查",
+        "text": "默认只放行 localhost 的浏览器页面，可用 allowedOrigins 增加域名或设 false 关闭；allowedHosts 防 DNS rebinding；Express 默认 body 限制 100 KB，需用 app.useBodyParser() 调大；浏览器客户端要同时在 allowedOrigins 与 CORS 配置里放行。"
+      }
+    ],
+    "keyPoints": [
+      "HTTP 端点默认在 /mcp，受全局前缀、版本、中间件与 CORS 控制",
+      "endpointVersion 与 decorators 控制端点的版本和类装饰器",
+      "端点每请求无状态，多实例部署无需会话亲和",
+      "独立上下文用 McpStdioServer.listen() 提供 stdio 传输",
+      "McpStdioLogger 写 stderr，保证 stdout 只承载协议",
+      "allowedOrigins 默认只允许 localhost，allowedHosts 防 DNS 重绑定",
+      "浏览器客户端需同时在 allowedOrigins 和 CORS 中放行"
+    ],
+    "snippets": [
+      {
+        "title": "stdio 入口",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { McpStdioLogger, McpStdioServer } from '@nestjs/mcp';\nimport { AppModule } from './app.module';\n\nasync function bootstrap() {\n  const app = await NestFactory.createApplicationContext(AppModule, {\n    logger: new McpStdioLogger(),\n  });\n  await app.get(McpStdioServer).listen();\n  await app.close();\n}\nbootstrap();"
+      },
+      {
+        "title": "为浏览器客户端配置端点",
+        "lang": "typescript",
+        "code": "const app = await NestFactory.create<NestExpressApplication>(AppModule);\napp.useBodyParser('json', { limit: '4mb' });\napp.enableCors({\n  origin: ['https://support.catstore.example'],\n  allowedHeaders: [\n    'Authorization',\n    'Content-Type',\n    'Mcp-Protocol-Version',\n    'Mcp-Method',\n    'Mcp-Name',\n  ],\n  exposedHeaders: ['WWW-Authenticate'],\n});\nawait app.listen(3000);"
+      }
+    ],
+    "api": [
+      "McpStdioServer",
+      "McpStdioLogger",
+      "path",
+      "endpointVersion",
+      "decorators",
+      "allowedOrigins",
+      "allowedHosts",
+      "useBodyParser()",
+      "enableCors()"
+    ],
+    "pitfalls": [
+      "stdio 入口把日志写到 stdout 会破坏协议，必须使用 McpStdioLogger",
+      "跨站页面请求默认被 403，浏览器客户端要显式加入 allowedOrigins",
+      "工具参数受 body parser 限制，Express 默认 100 KB 需要调大"
+    ],
+    "enterprise": "远程助手走带 OAuth 的 HTTP 端点并启用 allowedHosts，本地 IDE 集成单独构建 stdio 入口；把两者放在同一代码库、共用同一套工具定义，部署与运维更简单。",
+    "related": [
+      "mcp/overview",
+      "mcp/testing",
+      "http/versioning",
+      "security/cors"
+    ]
+  },
+  {
+    "id": "mcp/testing",
+    "titleZh": "MCP 测试",
+    "summary": "tools、resources 与 prompts 都是 provider 方法，业务逻辑可像普通 provider 一样直接单测；MCP 额外提供的 schema、守卫、scopes 与结果形态，则用 @nestjs/mcp/testing 的 connectMcpClient() 在内存中连接真实 MCP 客户端来测试。它不启动 HTTP 服务器，但走与端点相同的处理器，可替换 token verifier、按 token 区分 scopes，并用 McpRegistry 批量检查原语。",
+    "sections": [
+      {
+        "heading": "单元测试",
+        "text": "单元测试直接调用方法，传入它需要的参数与上下文，例如用 { authInfo: { clientId } } 充当 McpContext。这样会跳过参数校验、守卫与拦截器，返回值也不会被转换为 MCP 结果，这些内容需要交给客户端测试。"
+      },
+      {
+        "heading": "内存 MCP 客户端",
+        "text": "connectMcpClient(moduleRef, { token }) 把官方 SDK 的 Client 接到应用上，经过与端点相同的 token 校验、schema 与增强器。用 overrideProvider() 把真实 verifier 换成测试 verifier，再调用 listTools()、callTool() 等断言。"
+      },
+      {
+        "heading": "结果、错误与令牌",
+        "text": "工具失败会变成 isError 结果，模型能读到；resources 与 prompts 失败是抛出的 JSON-RPC 错误。scopes 不足时 callTool 抛 InsufficientScopeError，无 token 连接抛 SdkHttpError；headers 可传请求头，era: 'legacy' 模拟 2025 协议客户端。"
+      },
+      {
+        "heading": "HTTP 与 stdio",
+        "text": "路由层（全局前缀、中间件、CORS、Origin 校验）要在真实 HTTP 上测：用 app.listen(0) 启动后发 fetch 请求。测 stdio 入口则构建应用，用 SDK 的 StdioClientTransport 以子进程方式启动 dist/stdio.js，再像真实客户端那样调用工具。"
+      }
+    ],
+    "keyPoints": [
+      "直接调用方法可测业务逻辑，但不校验参数、不经过守卫与拦截器",
+      "connectMcpClient() 在内存中连接官方 MCP 客户端，不启动 HTTP 服务器",
+      "overrideProvider() 可把 token verifier 替换成已知测试 token 的实现",
+      "工具失败是 isError 结果，资源与提示失败是抛出的 JSON-RPC 错误",
+      "scopes 不足抛 InsufficientScopeError，无 token 连接失败",
+      "headers 传请求头，era: 'legacy' 模拟 2025 协议版本客户端",
+      "McpRegistry 保存启动时扫描到的原语，可统一断言工具描述等规则"
+    ],
+    "snippets": [
+      {
+        "title": "用内存客户端测试工具",
+        "lang": "typescript",
+        "code": "import { Test } from '@nestjs/testing';\nimport { connectMcpClient } from '@nestjs/mcp/testing';\nimport { AppModule } from '../src/app.module';\nimport { IdentityProviderTokenVerifier } from '../src/auth/verifier';\nimport { TestTokenVerifier } from './test-token.verifier';\n\nconst moduleRef = await Test.createTestingModule({ imports: [AppModule] })\n  .overrideProvider(IdentityProviderTokenVerifier)\n  .useClass(TestTokenVerifier)\n  .compile();\n\nconst client = await connectMcpClient(moduleRef, { token: 'support-token' });\nconst { tools } = await client.listTools();\nconst result = await client.callTool({\n  name: 'find-order',\n  arguments: { orderId: 'ord_123' },\n});\nexpect(result.isError).toBeFalsy();\nawait client.close();"
+      },
+      {
+        "title": "测试 stdio 入口",
+        "lang": "typescript",
+        "code": "import { Client } from '@modelcontextprotocol/client';\nimport { StdioClientTransport } from '@modelcontextprotocol/client/stdio';\n\nconst client = new Client({ name: 'stdio-e2e', version: '1.0.0' });\nawait client.connect(\n  new StdioClientTransport({\n    command: process.execPath,\n    args: ['dist/stdio.js'],\n  }),\n);\ntry {\n  const { tools } = await client.listTools();\n  expect(tools.map((tool) => tool.name)).toContain('find-order');\n} finally {\n  await client.close();\n}"
+      }
+    ],
+    "api": [
+      "connectMcpClient()",
+      "McpRegistry",
+      "InsufficientScopeError",
+      "SdkHttpError",
+      "StdioClientTransport",
+      "overrideProvider()",
+      "era",
+      "headers"
+    ],
+    "pitfalls": [
+      "内存客户端从路由之后开始，中间件与 decorators 中的守卫不会运行",
+      "测试 token 同样需要未来的 expiresAt 与服务器的 resource 字段",
+      "ctx.request 在内存客户端里是普通对象，路由行为需用 HTTP 测试"
+    ],
+    "enterprise": "把 MCP 的 e2e 测试放进 CI：用内存客户端覆盖 schema、鉴权与 scopes，用少量 HTTP 与 stdio 测试兜住传输层；测试 verifier 只在测试模块注册，绝不进入生产代码。",
+    "related": [
+      "mcp/primitives",
+      "mcp/transports",
+      "mcp/overview",
+      "fundamentals/testing"
+    ]
+  },
+  {
+    "id": "mcp/migration",
+    "titleZh": "MCP 迁移",
+    "summary": "从社区包 @rekog/mcp-nest 迁移到 @nestjs/mcp 基本是机械改动：装饰器保持同名，tools、resources 与 prompts 仍是类方法。本文把 1.x 的 McpModule.forRoot() 与 2.x 的 McpStrategy 两种 API 映射到 @nestjs/mcp，涉及包替换、模块选项、方法签名、异常与授权，并列出不再支持的能力：HTTP+SSE 传输、会话、运行时注册工具、单应用多服务器与请求作用域 provider。",
+    "sections": [
+      {
+        "heading": "包与模块",
+        "text": "先卸载旧包，安装 @nestjs/mcp、@modelcontextprotocol/server 与 zod；2.x 迁移还要清理 core、node 等包。1.x 的 mcpEndpoint 对应 path，guards 改由 decorators: [UseGuards(...)] 表达，transport 不再是配置项。"
+      },
+      {
+        "heading": "工具、资源与提示",
+        "text": "装饰器名字不变，参数选项改名：tool 的 parameters 改为 inputSchema，prompt 用 argsSchema；方法签名统一为 (input, ctx)，request 从 ctx.request 读取；进度上报变为 ctx.reportProgress(progress, total)。"
+      },
+      {
+        "heading": "守卫、错误与授权",
+        "text": "增强器保持不变，但上下文改用 McpExecutionContext.create(context)，类型是 'mcp' 而不是 'rpc'；错误从 RpcException 改为 HttpException；授权改为资源服务器，用 auth.verifier 与 scopes 替代 McpAuthModule。"
+      },
+      {
+        "heading": "不再支持的能力",
+        "text": "HTTP+SSE（2024-11-05）传输不再提供，客户端应改用 Streamable HTTP；请求之间不保留会话；不支持运行时注册工具、一个应用跑多个 MCP 服务器，也不支持请求作用域 provider，调用相关信息都要从 ctx 获取。"
+      }
+    ],
+    "keyPoints": [
+      "用 @nestjs/mcp、@modelcontextprotocol/server 与 zod 替换旧包",
+      "1.x 的 mcpEndpoint 改 path，guards 改为 decorators 数组",
+      "2.x 的 McpStrategy 与 connectMicroservice 写法删除，端点就是路由",
+      "parameters 改 inputSchema，prompt 的 schema 改用 argsSchema",
+      "方法签名统一为 (input, ctx)，request 与 token 从 ctx 读取",
+      "错误用 HttpException 系列替代 RpcException，异常仍按工具错误返回",
+      "授权改为资源服务器：auth.verifier 与 scopes 替代 McpAuthModule"
+    ],
+    "snippets": [
+      {
+        "title": "迁移模块配置",
+        "lang": "typescript",
+        "code": "// 之前：@rekog/mcp-nest 1.x\nMcpModule.forRoot({\n  name: 'cat-store',\n  version: '1.0.0',\n  transport: [McpTransportType.STREAMABLE_HTTP],\n  mcpEndpoint: 'mcp-operations',\n  guards: [ApiKeyGuard],\n});\n\n// 之后：@nestjs/mcp\nMcpModule.forRoot({\n  name: 'cat-store',\n  version: '1.0.0',\n  path: 'mcp-operations',\n  decorators: [UseGuards(ApiKeyGuard)],\n});"
+      },
+      {
+        "title": "迁移工具方法签名",
+        "lang": "typescript",
+        "code": "// 之前：@rekog/mcp-nest 1.x\n@Tool({\n  name: 'greeting-tool',\n  description: 'Returns a greeting with progress updates',\n  parameters: z.object({ name: z.string().default('World') }),\n})\nasync sayHello({ name }, context: Context, request: Request) {\n  await context.reportProgress({ progress: 50, total: 100 });\n  return `Hello, ${name}, from ${request.headers['user-agent']}!`;\n}\n\n// 之后：@nestjs/mcp\n@Tool({\n  name: 'greeting-tool',\n  description: 'Returns a greeting with progress updates',\n  inputSchema: z.object({ name: z.string().default('World') }),\n})\nasync sayHello({ name }: { name: string }, ctx: McpContext<Request>) {\n  await ctx.reportProgress(50, 100);\n  return `Hello, ${name}, from ${ctx.request?.headers['user-agent']}!`;\n}"
+      }
+    ],
+    "api": [
+      "@nestjs/mcp",
+      "@modelcontextprotocol/server",
+      "McpModule.forRoot()",
+      "inputSchema",
+      "argsSchema",
+      "McpContext",
+      "McpTokenVerifier",
+      "McpStrategy",
+      "McpStdioServer"
+    ],
+    "pitfalls": [
+      "请求作用域 provider 启动即失败，调用相关信息应从 ctx 读取",
+      "不再提供 HTTP+SSE 与会话，2025 客户端无法中途请求输入",
+      "不支持运行时注册工具与一个应用多个 MCP 服务器"
+    ],
+    "enterprise": "升级前先用本文的对照清单盘点旧 API，逐项替换模块选项、方法签名与授权；迁移后补一套内存客户端测试，覆盖工具、资源、提示与 scopes，确认行为一致。",
+    "related": [
+      "mcp/overview",
+      "mcp/primitives",
+      "mcp/transports",
+      "mcp/testing"
+    ]
+  },
+  {
+    "id": "ai/overview",
+    "titleZh": "AI 概述",
+    "summary": "@nestjs/ai 把语言模型接入 Nest 应用：模型按名字注册并可注入，调用带超时、重试与回退模型，答案可用 schema 校验，provider 的方法通过 @AgentFunction() 成为模型可调用的 agent function。它基于 AI SDK（ai）与 @ai-sdk/* provider 包，模型调用运行在 @nestjs/resilience 的策略之上，agent function 调用会经过类与方法的守卫、拦截器、管道和异常过滤器，以模型代理的用户身份执行。",
+    "sections": [
+      {
+        "heading": "安装与注册模型",
+        "text": "安装 @nestjs/ai、@nestjs/resilience、ai、provider 包与 zod。在根模块用 AiModule.forRoot() 按名字注册模型，default 是未指定 model 时的默认值；defaults 统一设置超时、重试、maxSteps 与 budget，isGlobal 让 AiService 全局可注入。"
+      },
+      {
+        "heading": "调用模型",
+        "text": "用 AiService.generateText() 发送 prompt，可带 instructions（系统提示）与 model、label。结果不只是 text，还包含 finishReason、usage、cost、steps、toolCalls、toolResults、responseMessages 与 model，便于计费与审计。"
+      },
+      {
+        "heading": "结构化输出",
+        "text": "generateObject() 把 schema 的 JSON Schema 发给模型，并解析、校验返回的 JSON，object 因此带类型。答案不是 JSON 或不符合 schema 时抛 AiOutputError，不会重试也不会回退；schema 的 transform 在答案上执行，模型看到的是输入侧 JSON Schema。"
+      },
+      {
+        "heading": "异步配置与选项",
+        "text": "forRootAsync() 支持工厂、useClass（实现 AiOptionsFactory）与 useExisting，isGlobal 与 modelNames 留在顶层。@InjectModel() 注入底层 LanguageModel 以便自行调用 AI SDK；模型名不存在时启动失败，并指出请求它的类。"
+      }
+    ],
+    "keyPoints": [
+      "AiModule.forRoot() 按名字注册模型，default 是未指定 model 时的默认值",
+      "模型定义可带 fallback、pricing、timeout、retry 与生成参数",
+      "generateText() 返回 text、usage、cost、steps 等完整结果",
+      "generateObject() 按 schema 解析校验答案，失败抛 AiOutputError 且不重试",
+      "defaults 统一设置超时、重试、maxSteps、budget，调用级设置优先",
+      "forRootAsync() 支持工厂、useClass 与 useExisting",
+      "@InjectModel() 注入底层 LanguageModel，用于自行调用 AI SDK"
+    ],
+    "snippets": [
+      {
+        "title": "注册模型与默认策略",
+        "lang": "typescript",
+        "code": "import { anthropic } from '@ai-sdk/anthropic';\nimport { Module } from '@nestjs/common';\nimport { AiModule } from '@nestjs/ai';\n\n@Module({\n  imports: [\n    AiModule.forRoot({\n      isGlobal: true,\n      models: {\n        default: anthropic('claude-opus-5-5'),\n        fast: {\n          model: anthropic('claude-haiku-5-5'),\n          fallback: 'default',\n        },\n      },\n      defaults: { timeout: '30s', retry: { attempts: 3 } },\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "生成结构化输出对象",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { AiService } from '@nestjs/ai';\nimport * as z from 'zod';\n\nconst Triage = z.object({\n  category: z.enum(['shipping', 'billing', 'product', 'other']),\n  orderId: z.string().nullable(),\n  urgent: z.boolean(),\n});\n\n@Injectable()\nexport class TriageService {\n  constructor(private readonly ai: AiService) {}\n\n  async triage(email: string) {\n    const { object } = await this.ai.generateObject({\n      model: 'fast',\n      label: 'triage',\n      schema: Triage,\n      prompt: email,\n    });\n    return object;\n  }\n}"
+      }
+    ],
+    "api": [
+      "AiModule.forRoot()",
+      "AiModule.forRootAsync()",
+      "AiService",
+      "generateText()",
+      "generateObject()",
+      "@InjectModel()",
+      "@AgentFunction()",
+      "AiConfigurationError",
+      "AiOutputError",
+      "defaults"
+    ],
+    "pitfalls": [
+      "模型名未配置或同时传 prompt 与 messages 时，发送前抛 AiConfigurationError",
+      "generateObject() 答案不是 JSON 或不匹配 schema 时不重试也不回退",
+      "直接 @InjectModel() 调用 AI SDK 会失去超时、回退、预算与用量事件"
+    ],
+    "enterprise": "把模型注册收敛到独立的 LlmModule 并导出，业务模块只注入 AiService；用 defaults 统一超时与重试，再按调用覆盖模型和预算，方便集中做用量与成本治理。",
+    "related": [
+      "ai/models",
+      "ai/tools",
+      "ai/agents",
+      "mcp/overview"
+    ]
+  }
+]

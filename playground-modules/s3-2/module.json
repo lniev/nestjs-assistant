@@ -1,0 +1,39 @@
+{
+  "id": "s3-2",
+  "itemId": "s3-2",
+  "stageId": "s3",
+  "stageIndex": 3,
+  "itemIndex": 2,
+  "stageTitleZh": "模块化与依赖注入进阶",
+  "titleZh": "动态模块与异步配置",
+  "title": "动态模块与异步配置",
+  "level": "L3",
+  "goal": "写 forRoot/forRootAsync 动态模块，让基础设施模块能被不同业务模块按需配置并复用。",
+  "practice": "在操练场把硬编码 API key 改成 forRootAsync 读取 ConfigService。",
+  "deliverable": "StorageModule.forRootAsync 与两个不同配置使用方",
+  "accept": "两个模块以不同 bucket 导入，实例配置互不串",
+  "minutes": 240,
+  "pageIds": [
+    "fundamentals/dynamic-modules",
+    "application/configuration"
+  ],
+  "summary": "手写 ConfigModule（全局配置服务）+ StorageModule.forRootAsync 动态模块：MediaModule 与 BackupModule 各自以不同 bucket/region 异步注册同一个存储模块，/media/files 与 /backup/files 的实例配置互不串。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/media/files",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/backup/files",
+      "expect": 200
+    }
+  ]
+}

@@ -1,0 +1,374 @@
+[
+  {
+    "id": "fundamentals/custom-providers",
+    "titleZh": "自定义提供者",
+    "summary": "Nest 的依赖注入系统支持远超标准 provider 的注册方式。本章回顾 DI 基础与注册三步，再介绍 useValue、useClass、useFactory、useExisting 四种自定义提供者语法，以及字符串、Symbol、抽象类等非类令牌与 @Inject() 的配合，并说明如何通过 exports 把自定义 provider 共享给其它模块。",
+    "sections": [
+      {
+        "heading": "DI 基础与注册三步",
+        "text": "provider 用 @Injectable() 标记，控制器在构造函数声明依赖，再在 @Module() 的 providers 注册，三步就位。Nest 传递地分析依赖图并自底向上解析；默认单例作用域下实例只创建一次并缓存。解析有问题时可设置 NEST_DEBUG 输出额外日志。"
+      },
+      {
+        "heading": "值提供者与令牌",
+        "text": "providers: [CatsService] 只是 { provide, useClass } 的简写，要提供自定义实例或测试替换实现时就需要自定义 provider。useValue 适合注入常量、外部库对象或 mock；令牌可用字符串、Symbol 或 enum，注入时须用 @Inject() 声明。接口编译后擦除不能当令牌，抽象类可兼作契约与令牌。"
+      },
+      {
+        "heading": "类与工厂提供者",
+        "text": "useClass 让令牌按环境动态解析到不同实现类，例如开发与生产环境分别绑定不同的配置服务。useFactory 用工厂函数动态创建 provider，工厂可依赖其它 provider：inject 数组按序传参，元素可写成 { token, optional: true } 表示可缺省。"
+      },
+      {
+        "heading": "别名提供者与导出",
+        "text": "useExisting 为已注册的 provider 建别名，让两个令牌指向同一实例（单例作用域下）；provider 也不必是服务，可以是配置对象等任意值。自定义 provider 默认只在声明模块可见，要供其它模块使用必须在 exports 中写令牌或完整 provider 对象。"
+      }
+    ],
+    "keyPoints": [
+      "providers: [CatsService] 是 { provide, useClass } 的简写。",
+      "useValue 注入常量、外部库对象或 mock，常用于测试替换。",
+      "非类令牌（字符串、Symbol、enum）需用 @Inject() 显式注入。",
+      "接口编译后被擦除不能当令牌；抽象类可兼作契约与令牌。",
+      "useClass 按环境切换实现，useFactory 用 inject 传入依赖。",
+      "useExisting 为已有 provider 建别名，同作用域下共享实例。",
+      "自定义 provider 需 exports 令牌或完整对象才能跨模块使用。"
+    ],
+    "snippets": [
+      {
+        "title": "工厂提供者注入可选依赖",
+        "lang": "typescript",
+        "code": "const connectionProvider = {\n  provide: 'CONNECTION',\n  useFactory: (optionsProvider: MyOptionsProvider, optionalProvider?: string) => {\n    const options = optionsProvider.get();\n    return new DatabaseConnection(options);\n  },\n  inject: [MyOptionsProvider, { token: 'SomeOptionalProvider', optional: true }],\n};\n\n@Module({\n  providers: [connectionProvider, MyOptionsProvider],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "别名提供者与令牌注入",
+        "lang": "typescript",
+        "code": "@Injectable()\nclass LoggerService {\n  log(message: string) {}\n}\n\nconst loggerAliasProvider = {\n  provide: 'AliasedLoggerService',\n  useExisting: LoggerService,\n};\n\n@Module({\n  providers: [LoggerService, loggerAliasProvider],\n  exports: [loggerAliasProvider],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class CatsRepository {\n  constructor(@Inject('AliasedLoggerService') private logger: LoggerService) {}\n}"
+      }
+    ],
+    "api": [
+      "@Module()",
+      "@Injectable()",
+      "@Inject()",
+      "useValue",
+      "useClass",
+      "useFactory",
+      "useExisting",
+      "inject",
+      "exports"
+    ],
+    "pitfalls": [
+      "接口运行时不存在，直接当令牌会解析失败，应改用字符串或 Symbol。",
+      "自定义 provider 只在声明模块可见，忘记 exports 会导致跨模块注入失败。",
+      "useExisting 不新建实例；目标 provider 非单例时别名不会共享实例。"
+    ],
+    "enterprise": "把数据库连接、配置对象、第三方 SDK 客户端用 useFactory 或 useValue 封装成模块私有 provider，只在模块边界导出抽象令牌；业务模块依赖令牌而非实现，便于按环境切换与测试替换。",
+    "related": [
+      "providers",
+      "fundamentals/dynamic-modules",
+      "fundamentals/injection-scopes",
+      "fundamentals/testing"
+    ]
+  },
+  {
+    "id": "fundamentals/async-providers",
+    "titleZh": "异步提供者",
+    "summary": "有时应用必须等数据库连接等异步任务完成才能开始服务，异步提供者用于解决这个问题：用 useFactory 配合 async/await，工厂返回 Promise，Nest 会等它解析后才实例化依赖该 provider 的类。异步提供者仍按令牌注入，是启动阻塞式初始化的官方做法，常用于数据库连接、远程配置加载等必须就绪的场景。",
+    "sections": [
+      {
+        "heading": "异步工厂与启动顺序",
+        "text": "用 useFactory 搭配 async 函数即可声明异步提供者，工厂内部 await 数据库连接等异步任务并返回结果。Nest 会等 Promise 解析后才实例化依赖它的类，因此应用不会在基础设施未就绪时处理请求，启动流程天然具备就绪检查语义。"
+      },
+      {
+        "heading": "按令牌注入",
+        "text": "异步提供者不是特殊类型，仍通过令牌注入。示例中令牌为 ASYNC_CONNECTION，消费方用 @Inject('ASYNC_CONNECTION') 获取已解析的连接；若提供者是类则按常规构造函数注入。它同样遵循作用域与模块可见性规则，可放在独立模块中导出。"
+      }
+    ],
+    "keyPoints": [
+      "useFactory 结合 async 函数即可创建异步提供者，工厂返回 Promise。",
+      "Nest 等待 Promise 解析后，才实例化依赖该 provider 的类。",
+      "典型场景：数据库连接、远程配置、外部服务握手等启动前置任务。",
+      "异步 provider 仍按令牌注入，例如 @Inject('ASYNC_CONNECTION')。",
+      "工厂 Promise 被 reject 会中断启动并抛出依赖解析错误。",
+      "阻塞启动会拖慢冷启动，只用于真正必须就绪的依赖。"
+    ],
+    "snippets": [
+      {
+        "title": "异步数据库连接提供者",
+        "lang": "typescript",
+        "code": "const connectionProvider = {\n  provide: 'ASYNC_CONNECTION',\n  useFactory: async () => {\n    const connection = await createConnection(options);\n    return connection;\n  },\n};\n\n@Module({\n  providers: [connectionProvider],\n  exports: [connectionProvider],\n})\nexport class DatabaseModule {}\n\n@Injectable()\nexport class CatsRepository {\n  constructor(@Inject('ASYNC_CONNECTION') private connection: Connection) {}\n}"
+      }
+    ],
+    "api": [
+      "useFactory",
+      "provide",
+      "@Inject()",
+      "@Module()"
+    ],
+    "pitfalls": [
+      "异步工厂未捕获的 rejection 会阻塞应用启动，需处理失败与重试。",
+      "初始化阶段没有请求上下文，不要在其中访问 REQUEST 等请求级数据。",
+      "所有依赖它的类都会被推迟实例化，滥用会显著拉长启动时间。"
+    ],
+    "enterprise": "把数据库连接、消息队列客户端、远程配置等未就绪即不可服务的基础设施封装为异步 provider，配合健康检查在启动阶段快速失败；避免在异步工厂里放置重业务初始化逻辑。",
+    "related": [
+      "fundamentals/custom-providers",
+      "application/configuration",
+      "fundamentals/lifecycle-events"
+    ]
+  },
+  {
+    "id": "fundamentals/dynamic-modules",
+    "titleZh": "动态模块",
+    "summary": "静态模块的导入方无法影响宿主模块配置，而插件式通用模块需要针对每个消费者定制。动态模块用静态方法 register()/forRoot()/forFeature() 在导入时接收选项，返回带 module 属性的 DynamicModule，并通过自定义 provider 把运行时选项注入模块内部；ConfigurableModuleBuilder 可自动生成同步与异步注册方法。",
+    "sections": [
+      {
+        "heading": "静态绑定的局限",
+        "text": "静态 import 中，宿主模块提供什么 provider 完全由宿主声明，消费方没有入口传配置。用户模块与订单模块都要按各自前缀生成 ID 时，静态模块只能提供一个固定配置的实例，无法满足不同消费者的差异化需求。"
+      },
+      {
+        "heading": "动态模块与注册方法",
+        "text": "动态模块是运行时创建并实现 DynamicModule 接口的对象，属性与 @Module() 元数据相同，外加必填的 module 属性指向模块类。模块类上的静态方法（约定 register()/forRoot()/forFeature()）返回该对象，结果可直接放进 imports 数组。"
+      },
+      {
+        "heading": "模块选项注入",
+        "text": "register(options) 先用 { provide, useValue } 把选项注册为 provider，再让 IdGenerator 用 @Inject(TOKEN) 注入。每个导入方因此拿到各自配置的实例，例如前缀分别为 usr 与 ord；值 provider 不受限于是服务，任意对象都能注入。"
+      },
+      {
+        "heading": "配置模块构建器",
+        "text": "手工维护高可配置的动态模块样板很繁琐。ConfigurableModuleBuilder 的 build() 返回 ConfigurableModuleClass 与 MODULE_OPTIONS_TOKEN，继承它即获得 register()/registerAsync()；setExtras 可处理 isGlobal 等不进 options 的额外配置。"
+      }
+    ],
+    "keyPoints": [
+      "动态模块是运行时创建并实现 DynamicModule 的对象，module 属性必填。",
+      "约定用 register()/forRoot()/forFeature() 与对应异步方法接收配置。",
+      "用 { provide, useValue } 把导入选项注册为 provider 再 @Inject 注入。",
+      "ConfigurableModuleClass 自动生成同步与异步注册方法。",
+      "registerAsync 的 useFactory/useClass/useExisting 三者互斥。",
+      "setExtras 把 isGlobal 等不影响 options 的配置映射到模块定义。",
+      "社区约定：register 每消费者独立配置，forRoot 全应用一次。"
+    ],
+    "snippets": [
+      {
+        "title": "动态模块注册方法实现",
+        "lang": "typescript",
+        "code": "@Module({})\nexport class IdGeneratorModule {\n  static register(options: IdGeneratorModuleOptions): DynamicModule {\n    return {\n      module: IdGeneratorModule,\n      providers: [\n        { provide: ID_GENERATOR_OPTIONS, useValue: options },\n        IdGenerator,\n      ],\n      exports: [IdGenerator],\n    };\n  }\n}"
+      },
+      {
+        "title": "异步注册读取配置服务",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [\n    IdGeneratorModule.registerAsync({\n      imports: [ConfigModule],\n      useFactory: (configService: ConfigService) => ({\n        prefix: configService.getOrThrow<string>('USER_ID_PREFIX'),\n      }),\n      inject: [ConfigService],\n    }),\n  ],\n  providers: [UsersService],\n})\nexport class UsersModule {}"
+      }
+    ],
+    "api": [
+      "DynamicModule",
+      "@Module()",
+      "register()",
+      "forRoot()",
+      "forFeature()",
+      "registerAsync()",
+      "ConfigurableModuleBuilder",
+      "MODULE_OPTIONS_TOKEN",
+      "setClassMethodName()",
+      "setExtras()"
+    ],
+    "pitfalls": [
+      "返回对象漏写 module 属性，Nest 无法把该对象当作模块处理。",
+      "registerAsync 的 useFactory、useClass、useExisting 必须恰好选一个。",
+      "应用级唯一配置误用 register()，会让每个导入模块各建一套连接。"
+    ],
+    "enterprise": "通用库用 ConfigurableModuleBuilder 生成 forRoot 与 forRootAsync，集中管理连接池、缓存与鉴权配置；严格区分 register 与 forRoot，异步配置统一注入 ConfigService。",
+    "related": [
+      "modules",
+      "fundamentals/custom-providers",
+      "fundamentals/async-providers",
+      "application/configuration"
+    ]
+  },
+  {
+    "id": "fundamentals/injection-scopes",
+    "titleZh": "注入作用域",
+    "summary": "Nest 中大多数 provider 默认是全局共享的单例，在 Node.js 非多线程模型下安全高效；但多租户、请求级缓存、请求追踪等场景需要按请求或按消费者创建实例。注入作用域提供 DEFAULT、REQUEST、TRANSIENT 三种生命周期，可在 @Injectable() 或自定义 provider 上声明，并通过 REQUEST、INQUIRER 等令牌获取上下文信息。",
+    "sections": [
+      {
+        "heading": "三种作用域",
+        "text": "DEFAULT 单例贯穿应用生命周期，启动后全部实例化；REQUEST 为每个请求创建实例并在请求结束后回收；TRANSIENT 不跨消费者共享，每个注入它的消费者都得到专属实例。官方推荐绝大多数场景使用默认单例作用域。"
+      },
+      {
+        "heading": "作用域冒泡",
+        "text": "REQUEST 作用域沿注入链向上冒泡：CatsController 依赖请求级的 CatsService，控制器也变成请求级；不依赖它的 CatsRepository 保持单例。TRANSIENT 不这样传导——单例服务注入 transient provider 只让该依赖每次全新，服务本身仍是单例。"
+      },
+      {
+        "heading": "请求与查询者令牌",
+        "text": "HTTP 应用可注入 REQUEST（来自 @nestjs/core）取得原始请求对象，它本身即请求级；GraphQL 应用改注入 CONTEXT。INQUIRER 令牌返回构造当前 provider 的宿主类，适合在日志、指标等横切 provider 中记录来源，通常配合 TRANSIENT 使用。"
+      },
+      {
+        "heading": "持久化提供者",
+        "text": "多租户应用若让数据源 provider 变成请求级，会连带大量组件每请求重建。durable provider 用 scope: Scope.REQUEST 加 durable: true，并注册 ContextIdStrategy 按租户聚合请求，把同一租户映射到同一个 DI 子树，避免逐请求重建。"
+      }
+    ],
+    "keyPoints": [
+      "Scope.DEFAULT 是默认单例作用域，实例随应用生命周期创建。",
+      "Scope.REQUEST 每请求新建并回收，Scope.TRANSIENT 每消费者各一份。",
+      "请求作用域沿注入链冒泡，依赖请求级 provider 的控制器也变为请求级。",
+      "@Controller({ scope: Scope.REQUEST }) 可声明控制器作用域。",
+      "@Inject(REQUEST) 取当前请求，GraphQL 应用改用 @Inject(CONTEXT)。",
+      "@Inject(INQUIRER) 取得构造该 provider 的宿主类，适合日志与指标。",
+      "durable: true 配合 ContextIdStrategy 按租户聚合 DI 子树。"
+    ],
+    "snippets": [
+      {
+        "title": "声明请求作用域并注入 REQUEST",
+        "lang": "typescript",
+        "code": "import { Inject, Injectable, Scope } from '@nestjs/common';\nimport { REQUEST } from '@nestjs/core';\nimport type { Request } from 'express';\n\n@Injectable({ scope: Scope.REQUEST })\nexport class CatsService {\n  constructor(@Inject(REQUEST) private readonly request: Request) {}\n}\n\n@Controller({ path: 'cats', scope: Scope.REQUEST })\nexport class CatsController {\n  constructor(private readonly catsService: CatsService) {}\n}"
+      },
+      {
+        "title": "持久化提供者与租户策略",
+        "lang": "typescript",
+        "code": "export class AggregateByTenantContextIdStrategy implements ContextIdStrategy {\n  private readonly tenants = new Map<string, ContextId>();\n\n  attach(contextId: ContextId, request: Request) {\n    const tenantId = request.headers['x-tenant-id'] as string;\n    const tenantSubTreeId =\n      this.tenants.get(tenantId) ?? ContextIdFactory.create();\n    this.tenants.set(tenantId, tenantSubTreeId);\n\n    return {\n      resolve: (info: HostComponentInfo) =>\n        info.isTreeDurable ? tenantSubTreeId : contextId,\n      payload: { tenantId },\n    };\n  }\n}\n// main.ts: ContextIdFactory.apply(new AggregateByTenantContextIdStrategy());"
+      }
+    ],
+    "api": [
+      "Scope",
+      "Scope.DEFAULT",
+      "Scope.REQUEST",
+      "Scope.TRANSIENT",
+      "@Injectable()",
+      "@Inject()",
+      "REQUEST",
+      "CONTEXT",
+      "INQUIRER",
+      "ContextIdFactory"
+    ],
+    "pitfalls": [
+      "请求作用域沿依赖链冒泡，底层一个请求级 provider 可能让大量组件每请求实例化。",
+      "Passport 策略、Cron 控制器等必须保持单例，不应使用请求作用域。",
+      "ContextIdFactory.create() 生成的子树中 REQUEST 为 undefined。"
+    ],
+    "enterprise": "多租户优先用 AsyncLocalStorage 或 durable provider 聚合 DI 子树，而非全链路请求作用域；只在请求级缓存、追踪等确需 per-request 状态时用 REQUEST，并以约 5% 延迟上限作为约束。",
+    "related": [
+      "fundamentals/module-ref",
+      "fundamentals/custom-providers",
+      "recipes/async-local-storage",
+      "fundamentals/lifecycle-events"
+    ]
+  },
+  {
+    "id": "fundamentals/circular-dependency",
+    "titleZh": "循环依赖",
+    "summary": "循环依赖指两个类互相依赖（A 依赖 B，同时 B 依赖 A），Nest 启动时因元数据不完整无法实例化。可用 forwardRef() 在 provider 与模块两侧包裹循环引用，让 Nest 延迟解析；也可用 ModuleRef 在一侧改为运行时获取来重构掉循环。barrel 文件是常见诱因，应避免用 index.ts 聚合导入。",
+    "sections": [
+      {
+        "heading": "循环依赖的成因",
+        "text": "模块之间或 provider 之间互相依赖时，Nest 启动阶段构建依赖图，两侧元数据都未定义完整就无法实例化。除显式互相引用外，用 barrel 文件（index.ts）聚合导入同目录文件也是常见诱因，例如控制器通过索引导入同目录服务，应改为直接引用具体文件。"
+      },
+      {
+        "heading": "提供者间前向引用",
+        "text": "用 forwardRef() 包裹对方类的引用，让 Nest 在元数据就绪后再解析；两侧构造函数都要写 @Inject(forwardRef(() => CommonService))。实例化顺序不确定，代码不能依赖哪个构造器先执行；请求作用域 provider 的循环依赖还可能解析出 undefined。"
+      },
+      {
+        "heading": "模块级与替代方案",
+        "text": "模块级循环依赖在双方 imports 中都用 forwardRef(() => 对方模块) 包裹即可。另一种思路是重构：在循环一侧改用 ModuleRef 动态获取 provider，把双向构造依赖改成单向延迟获取，从根本上消除循环，而不是用 forwardRef 掩盖设计问题。"
+      }
+    ],
+    "keyPoints": [
+      "循环依赖可发生在 provider 之间，也可发生在模块之间。",
+      "forwardRef(() => X) 让 Nest 引用尚未定义的类并延迟解析。",
+      "提供者循环依赖两侧都要写 @Inject(forwardRef(...))，只包一侧无效。",
+      "模块循环依赖在双方 imports 中用 forwardRef(() => XxxModule) 包裹。",
+      "实例化顺序不确定，代码不能依赖哪个构造函数先执行。",
+      "可用 ModuleRef 在一侧动态获取 provider，重构掉循环依赖。",
+      "避免用 barrel 文件（index.ts）导入同目录模块，易造成隐式循环。"
+    ],
+    "snippets": [
+      {
+        "title": "提供者双向前向引用",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService {\n  constructor(\n    @Inject(forwardRef(() => CommonService))\n    private readonly commonService: CommonService,\n  ) {}\n}\n\n@Injectable()\nexport class CommonService {\n  constructor(\n    @Inject(forwardRef(() => CatsService))\n    private readonly catsService: CatsService,\n  ) {}\n}"
+      },
+      {
+        "title": "模块双向前向引用",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [forwardRef(() => CatsModule)],\n  providers: [CommonService],\n  exports: [CommonService],\n})\nexport class CommonModule {}\n\n@Module({\n  imports: [forwardRef(() => CommonModule)],\n  providers: [CatsService],\n  exports: [CatsService],\n})\nexport class CatsModule {}"
+      }
+    ],
+    "api": [
+      "forwardRef()",
+      "@Inject()",
+      "ModuleRef",
+      "imports"
+    ],
+    "pitfalls": [
+      "只在循环关系一侧使用 forwardRef() 不够，两端都必须包裹。",
+      "请求作用域 provider 之间的循环依赖可能解析出 undefined。",
+      "用 barrel 文件聚合导入同目录类会制造隐蔽循环，应直接引用文件。"
+    ],
+    "enterprise": "优先拆分职责、引入事件或 ModuleRef 延迟获取来消除循环，把 forwardRef() 当最后手段；评审时禁止跨同目录 barrel 导入，并在模块依赖图上监控双向依赖，避免积累成难维护的网状结构。",
+    "related": [
+      "fundamentals/module-ref",
+      "fundamentals/injection-scopes",
+      "modules"
+    ]
+  },
+  {
+    "id": "fundamentals/module-ref",
+    "titleZh": "模块引用",
+    "summary": "ModuleRef 提供对模块内部 provider 的编程式访问：可按令牌 get() 当前模块的实例，传 strict: false 时从全局上下文获取；transient 或 request 等作用域 provider 必须用 resolve()，它返回来自独立 DI 子树的实例，可传 ContextId 复用同一子树；create() 能动态实例化未注册为 provider 的类。",
+    "sections": [
+      {
+        "heading": "获取实例与全局查找",
+        "text": "ModuleRef 从 @nestjs/core 导入，像普通依赖一样注入。get() 按令牌或类名返回当前模块中已注册并实例化的 provider、控制器或可注入类，找不到会抛异常；传 { strict: false } 可跨模块从全局上下文查找。"
+      },
+      {
+        "heading": "作用域实例解析",
+        "text": "作用域 provider 不能用 get()，需用异步的 resolve()。每次 resolve() 默认在独立 DI 子树中创建实例，多次调用引用不相等；要让多次调用共享同一子树，先用 ContextIdFactory.create() 生成 contextId 并传入 resolve()。"
+      },
+      {
+        "heading": "请求子树与注册",
+        "text": "手工创建的 contextId 子树没有 DI 管理的 REQUEST，可用 registerRequestByContextId() 注册请求对象。真实请求中先用 @Inject(REQUEST) 取请求，再用 ContextIdFactory.getByRequest() 取 contextId，最后 resolve() 其它请求级 provider。"
+      },
+      {
+        "heading": "动态实例化类",
+        "text": "对从未注册为 provider 的类，调用 moduleRef.create(SomeClass)，Nest 会实例化它并解析依赖，但不会把实例登记进容器。适合按条件动态挑选实现类，代价是失去容器对该实例的生命周期管理。"
+      }
+    ],
+    "keyPoints": [
+      "ModuleRef 从 @nestjs/core 导入，用构造函数注入。",
+      "get() 默认只在当前模块查找，{ strict: false } 查全局上下文。",
+      "作用域 provider 必须用异步 resolve()，get() 会抛错。",
+      "resolve() 默认每次新建 DI 子树，传同一 contextId 才能共享实例。",
+      "ContextIdFactory.create() 生成标识，getByRequest() 从请求取标识。",
+      "registerRequestByContextId() 为手工子树注册 REQUEST 对象。",
+      "create() 可动态实例化未注册到容器的类并注入依赖。"
+    ],
+    "snippets": [
+      {
+        "title": "复用上下文标识解析实例",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService implements OnModuleInit {\n  constructor(private readonly moduleRef: ModuleRef) {}\n\n  async onModuleInit() {\n    const contextId = ContextIdFactory.create();\n    const [a, b] = await Promise.all([\n      this.moduleRef.resolve(TransientService, contextId),\n      this.moduleRef.resolve(TransientService, contextId),\n    ]);\n    console.log(a === b); // true\n  }\n}"
+      },
+      {
+        "title": "从请求获取上下文标识",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class CatsService {\n  constructor(\n    @Inject(REQUEST) private readonly request: Record<string, unknown>,\n    private readonly moduleRef: ModuleRef,\n  ) {}\n\n  async getRepository() {\n    const contextId = ContextIdFactory.getByRequest(this.request);\n    return this.moduleRef.resolve(CatsRepository, contextId);\n  }\n}"
+      }
+    ],
+    "api": [
+      "ModuleRef",
+      "get()",
+      "resolve()",
+      "create()",
+      "ContextIdFactory",
+      "ContextId",
+      "registerRequestByContextId()"
+    ],
+    "pitfalls": [
+      "对 transient/request-scoped provider 调 get() 抛错，须用 resolve()。",
+      "多次 resolve() 默认返回不同实例，共享状态时必须显式传同一 contextId。",
+      "ContextIdFactory.create() 的子树中 REQUEST 为 undefined，需注册请求对象。"
+    ],
+    "enterprise": "把 ModuleRef 局限在插件、动态策略等真正需要运行时查找的场景，业务代码仍走构造函数注入；请求级共享统一用 ContextIdFactory.getByRequest() 复用上下文，避免随手 create() 导致实例不一致。",
+    "related": [
+      "fundamentals/injection-scopes",
+      "fundamentals/discovery-service",
+      "fundamentals/testing",
+      "fundamentals/dynamic-modules"
+    ]
+  }
+]

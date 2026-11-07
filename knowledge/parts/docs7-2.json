@@ -1,0 +1,355 @@
+[
+  {
+    "id": "graphql/interfaces",
+    "titleZh": "接口类型",
+    "summary": "接口是抽象类型，规定实现类型必须具备的字段集合。本章讲解代码优先下用 @InterfaceType() 定义接口、用 implements 让对象类型实现接口并自定义 resolveType，如何通过专用接口解析器复用字段解析逻辑，以及架构优先下用 __resolveType 完成具体类型判定。",
+    "sections": [
+      {
+        "heading": "定义接口类型",
+        "text": "代码优先用 @InterfaceType() 标注抽象类来定义 GraphQL 接口，字段仍用 @Field() 声明；不能用 TypeScript 的 interface 直接定义 GraphQL 接口。生成的 SDL 形如 interface Character { id: ID! name: String! }，抽象类中也可以放置默认实现。"
+      },
+      {
+        "heading": "实现与类型解析",
+        "text": "对象类型用 @ObjectType({ implements: () => [Character] }) 声明实现关系。默认 resolveType 依据解析器返回值的类实例判断具体类型，因此必须返回类实例而非普通对象字面量；也可在 @InterfaceType() 中传入 resolveType 回调自定义判定逻辑。"
+      },
+      {
+        "heading": "接口字段解析器复用",
+        "text": "把接口的字段解析实现写成专用解析器：用 @Resolver(() => Character) 标注类，用 @ResolveField() 定义字段解析函数，该实现会自动注册到所有实现该接口的对象类型。前提是把 inheritResolversFromInterfaces 设为 true。"
+      },
+      {
+        "heading": "架构优先写法",
+        "text": "架构优先先在 SDL 中写 interface 定义，再用类型生成得到 TypeScript 接口。接口需要额外的 __resolveType 字段，在 @Resolver('Character') 类中定义 @ResolveField() 的 __resolveType 方法并返回具体类型名即可。"
+      }
+    ],
+    "keyPoints": [
+      "代码优先用 @InterfaceType() 标注抽象类定义 GraphQL 接口。",
+      "TypeScript 的 interface 不能直接定义 GraphQL 接口，必须用装饰器类。",
+      "@ObjectType({ implements: () => [Character] }) 声明实现关系。",
+      "默认 resolveType 按类实例判定，解析器必须返回类实例而非普通对象。",
+      "接口解析器配合 inheritResolversFromInterfaces: true 复用字段实现。",
+      "架构优先在解析器中实现 __resolveType 返回具体类型名。"
+    ],
+    "snippets": [
+      {
+        "title": "定义并实现接口类型",
+        "lang": "typescript",
+        "code": "import { Field, ID, InterfaceType, ObjectType } from '@nestjs/graphql';\n\n@InterfaceType()\nexport abstract class Character {\n  @Field(() => ID)\n  id: string;\n\n  @Field()\n  name: string;\n}\n\n@ObjectType({ implements: () => [Character] })\nexport class Human implements Character {\n  id: string;\n  name: string;\n\n  @Field()\n  age: number;\n}"
+      },
+      {
+        "title": "编写接口字段解析器",
+        "lang": "typescript",
+        "code": "import {\n  Args, Info, Parent, ResolveField, Resolver,\n} from '@nestjs/graphql';\n\n@Resolver(() => Character)\nexport class CharacterInterfaceResolver {\n  @ResolveField(() => [Character])\n  friends(\n    @Parent() character: Character,\n    @Info() { parentType },\n    @Args('search', { type: () => String }) searchTerm: string,\n  ) {\n    return [];\n  }\n}"
+      }
+    ],
+    "api": [
+      "@InterfaceType()",
+      "@ObjectType()",
+      "implements",
+      "resolveType",
+      "@ResolveField()",
+      "inheritResolversFromInterfaces",
+      "__resolveType"
+    ],
+    "pitfalls": [
+      "TypeScript interface 不能用来定义 GraphQL 接口，必须用抽象类加装饰器。",
+      "默认 resolveType 依赖返回值类型，返回普通对象字面量会导致无法判定具体类型。",
+      "接口解析器复用必须显式打开 inheritResolversFromInterfaces，否则字段不生效。"
+    ],
+    "enterprise": "领域中的多态类型（如内容、支付方式）适合用接口建模；把公共字段解析下沉到接口解析器，减少各实现类的重复代码。",
+    "related": [
+      "graphql/unions-and-enums",
+      "graphql/resolvers",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "graphql/unions-and-enums",
+    "titleZh": "联合类型与枚举",
+    "summary": "联合类型让一个字段返回多种不相交的对象类型，枚举把字段取值限制在固定集合内。本章讲解用 createUnionType 定义联合并自定义 resolveType、用 registerEnumType 注册枚举与值描述、用 resolvers 映射枚举内部值，以及架构优先下的对应写法。",
+    "sections": [
+      {
+        "heading": "定义联合类型",
+        "text": "先定义组成联合的对象类型，再用 createUnionType({ name, types }) 注册联合，types 返回的数组必须加 as const，否则生成的声明文件会出错。字段类型写成 @Query(() => [ResultUnion]) 后即可在同一个字段返回多种对象类型。"
+      },
+      {
+        "heading": "联合的类型解析",
+        "text": "默认 resolveType 根据返回值的类实例判断具体类型，因此要返回类实例。若对象类型之间无法靠类区分，或需要更明确的判定规则，可给 createUnionType 传 resolveType 回调，按字段特征返回对应的类。"
+      },
+      {
+        "heading": "注册枚举类型",
+        "text": "用 TypeScript enum 加 registerEnumType(AllowedColor, { name }) 注册 GraphQL 枚举，description 与 valuesMap 可给枚举及枚举值加描述或标记废弃。字段用 @Field(() => AllowedColor) 引用后即可生成对应的 enum 定义。"
+      },
+      {
+        "heading": "架构优先与内部值",
+        "text": "架构优先直接在 SDL 中写 union 与 enum，联合同样需要额外的 __resolveType 字段。若后端内部值与 API 暴露值不同，可声明枚举解析器对象并通过 GraphQLModule 的 resolvers 选项做映射。"
+      }
+    ],
+    "keyPoints": [
+      "createUnionType 定义联合，types 必须加 as const。",
+      "联合的默认 resolveType 依赖类实例，必要时用 resolveType 回调自定义。",
+      "registerEnumType 注册枚举，description 与 valuesMap 补充元数据。",
+      "枚举内部值可用 resolvers 选项映射，实现 API 值与存储值解耦。",
+      "架构优先下联合用 __resolveType 字段决定具体类型。"
+    ],
+    "snippets": [
+      {
+        "title": "创建联合类型",
+        "lang": "typescript",
+        "code": "import { ObjectType, Field, Query } from '@nestjs/graphql';\n\n@ObjectType()\nexport class Book {\n  @Field()\n  title: string;\n}\n\n@ObjectType()\nexport class Author {\n  @Field()\n  name: string;\n}\n\nexport const ResultUnion = createUnionType({\n  name: 'ResultUnion',\n  types: () => [Author, Book] as const,\n  resolveType(value) {\n    return value.name ? Author : Book;\n  },\n});"
+      },
+      {
+        "title": "注册枚举与值描述",
+        "lang": "typescript",
+        "code": "import { registerEnumType } from '@nestjs/graphql';\n\nexport enum AllowedColor {\n  RED,\n  GREEN,\n  BLUE,\n}\n\nregisterEnumType(AllowedColor, {\n  name: 'AllowedColor',\n  description: 'The supported colors.',\n  valuesMap: {\n    RED: { description: 'The default color.' },\n    BLUE: { deprecationReason: 'Too blue.' },\n  },\n});"
+      }
+    ],
+    "api": [
+      "createUnionType()",
+      "registerEnumType()",
+      "resolveType",
+      "__resolveType",
+      "valuesMap"
+    ],
+    "pitfalls": [
+      "createUnionType 的 types 数组漏写 as const 会导致其他项目引用时类型声明报错。",
+      "联合的默认类型判定依赖类实例，返回普通对象会解析失败。",
+      "枚举内部值与 API 值不同时必须提供解析器映射，否则业务层拿到的是对外值。"
+    ],
+    "enterprise": "内容流、搜索结果等异构列表适合用联合类型；状态枚举统一集中注册并写清描述，避免各模块重复定义枚举字面量。",
+    "related": [
+      "graphql/interfaces",
+      "graphql/resolvers",
+      "graphql/scalars"
+    ]
+  },
+  {
+    "id": "graphql/field-middleware",
+    "titleZh": "字段中间件",
+    "summary": "字段中间件可在字段解析前后执行任意逻辑，常用于结果转换、参数校验与字段级权限校验。本章讲解 FieldMiddleware 函数的签名与执行链顺序、如何用 @Field() 的 middleware 选项或 @UseFieldMiddleware() 绑定中间件，以及全局字段中间件的注册与执行顺序。",
+    "sections": [
+      {
+        "heading": "中间件与执行链",
+        "text": "字段中间件是符合 FieldMiddleware 的函数，接收 MiddlewareContext（含 source、args、context、info）与 NextFn；调用 next() 会执行下一个中间件或真实字段解析器，中间件返回值会替换字段值。数组顺序决定执行顺序，第一个是最外层。"
+      },
+      {
+        "heading": "绑定字段中间件",
+        "text": "可以在 @Field({ middleware: [loggerMiddleware] }) 或 @ResolveField() 的选项中直接注册，也可以用 @UseFieldMiddleware() 装饰器；后者是独立装饰器，便于与其他装饰器组合成自定义装饰器，适合权限校验等需要复用的逻辑。"
+      },
+      {
+        "heading": "全局字段中间件",
+        "text": "在 buildSchemaOptions.fieldMiddleware 中注册的中间件作用于所有对象字段，并先于局部中间件执行；局部中间件里 middleware 选项又先于 @UseFieldMiddleware() 执行，叠加的装饰器按自下而上的顺序运行。"
+      }
+    ],
+    "keyPoints": [
+      "字段中间件实现 FieldMiddleware，接收 MiddlewareContext 与 NextFn。",
+      "调用 next() 执行真实解析器，中间件返回值会替换字段值。",
+      "多个中间件按数组顺序串行执行，第一个是最外层。",
+      "@Field({ middleware }) 或 @UseFieldMiddleware() 绑定中间件。",
+      "buildSchemaOptions.fieldMiddleware 注册全局中间件，先于局部中间件。",
+      "字段中间件不能注入依赖，重活应放到守卫或拦截器。"
+    ],
+    "snippets": [
+      {
+        "title": "编写日志字段中间件",
+        "lang": "typescript",
+        "code": "import {\n  FieldMiddleware,\n  MiddlewareContext,\n  NextFn,\n} from '@nestjs/graphql';\n\nconst loggerMiddleware: FieldMiddleware = async (\n  ctx: MiddlewareContext,\n  next: NextFn,\n) => {\n  const value = await next();\n  console.log(value);\n  return value;\n};\n\nexport { loggerMiddleware };"
+      },
+      {
+        "title": "在字段上注册中间件",
+        "lang": "typescript",
+        "code": "import { Field, ObjectType } from '@nestjs/graphql';\nimport { UseFieldMiddleware } from '@nestjs/graphql';\n\n@ObjectType()\nexport class Recipe {\n  @Field({ middleware: [loggerMiddleware] })\n  title: string;\n\n  @Field()\n  @UseFieldMiddleware(loggerMiddleware)\n  description: string;\n}\n\n@ResolveField(() => String, { middleware: [loggerMiddleware] })\ntitle() {\n  return 'Placeholder';\n}"
+      }
+    ],
+    "api": [
+      "FieldMiddleware",
+      "MiddlewareContext",
+      "NextFn",
+      "@UseFieldMiddleware()",
+      "fieldMiddleware",
+      "middleware"
+    ],
+    "pitfalls": [
+      "字段中间件无法使用依赖注入，需要外部数据时应由守卫或拦截器写入 context。",
+      "字段中间件只能作用于 @ObjectType() 类，其他类型上不生效。",
+      "开启字段级增强器后中间件执行次序会变化，需确认与拦截器的先后关系。"
+    ],
+    "enterprise": "字段级权限、脱敏与格式化适合用字段中间件实现；把公共逻辑做成全局中间件，业务特例再用装饰器局部覆盖。",
+    "related": [
+      "graphql/extensions",
+      "graphql/other-features",
+      "graphql/directives"
+    ]
+  },
+  {
+    "id": "graphql/mapped-types",
+    "titleZh": "映射类型",
+    "summary": "构建 CRUD 时经常需要基于同一实体派生多个输入类型。本章介绍 Nest 提供的 PartialType、PickType、OmitType、IntersectionType 四个映射工具：各自如何变换字段、如何替换子类装饰器，以及如何组合使用和基于 getFieldsAndDecoratorForType 编写自定义映射。",
+    "sections": [
+      {
+        "heading": "Partial 与 Pick",
+        "text": "PartialType() 返回把父类所有字段变为可选的类型，常用于 Update 输入；PickType() 按属性名数组挑选字段生成新类型。二者都继承原字段的元数据，第二个参数可传装饰器工厂，用于替换子类使用的 GraphQL 装饰器。"
+      },
+      {
+        "heading": "Omit 与交叉类型",
+        "text": "OmitType() 从父类中去掉指定属性生成新类型；IntersectionType() 把两个类型的字段合并成一个新类型，来源既可以是 @InputType() 也可以是 @ObjectType()，适合拼装额外信息场景。"
+      },
+      {
+        "heading": "组合与自定义映射",
+        "text": "内置工具可以嵌套组合，例如 PartialType(OmitType(Base, ['email'] as const)) 得到去掉 email 且全部可选的类型。也可用 getFieldsAndDecoratorForType() 读取字段元数据与类装饰器，实现自定义映射，注意返回的元数据是共享且只读的。"
+      }
+    ],
+    "keyPoints": [
+      "PartialType() 把父类字段全部变为可选，适合生成 Update 输入类型。",
+      "PickType() 与 OmitType() 按属性名挑选或排除字段，属性数组要加 as const。",
+      "IntersectionType() 合并两个类型的字段，得到新的 GraphQL 类型。",
+      "各工具可嵌套组合，如 PartialType(OmitType(...))。",
+      "第二个参数可传装饰器工厂，用于改变子类使用的 GraphQL 装饰器。",
+      "getFieldsAndDecoratorForType() 返回字段元数据与类装饰器，供自定义映射使用。"
+    ],
+    "snippets": [
+      {
+        "title": "用 PartialType 生成更新类型",
+        "lang": "typescript",
+        "code": "import { Field, InputType, PartialType } from '@nestjs/graphql';\n\n@InputType()\nclass CreateUserInput {\n  @Field()\n  email: string;\n\n  @Field()\n  password: string;\n}\n\n@InputType()\nexport class UpdateUserInput extends PartialType(CreateUserInput) {}\n\n@InputType()\nexport class UpdateEmailInput extends PickType(CreateUserInput, [\n  'email',\n] as const) {}"
+      },
+      {
+        "title": "Omit 与 Partial 组合",
+        "lang": "typescript",
+        "code": "import { InputType, OmitType, PartialType } from '@nestjs/graphql';\n\n@InputType()\nclass CreateUserInput {\n  @Field()\n  email: string;\n\n  @Field()\n  password: string;\n\n  @Field()\n  firstName: string;\n}\n\n@InputType()\nexport class UpdateUserInput extends PartialType(\n  OmitType(CreateUserInput, ['email'] as const),\n) {}"
+      }
+    ],
+    "api": [
+      "PartialType()",
+      "PickType()",
+      "OmitType()",
+      "IntersectionType()",
+      "getFieldsAndDecoratorForType()"
+    ],
+    "pitfalls": [
+      "父类与子类装饰器不同时，必须把目标装饰器作为第二个参数传入。",
+      "属性名数组漏写 as const 会导致类型推断过宽，编译期报错。",
+      "getFieldsAndDecoratorForType 返回的元数据与 schema 构建器共享，应只读并传副本。"
+    ],
+    "enterprise": "REST 与 GraphQL 共享 DTO 派生策略：create/update 输入由同一基类映射生成，配合 class-validator 与 ValidationPipe 统一校验，减少字段漂移。",
+    "related": [
+      "openapi/mapped-types",
+      "graphql/resolvers",
+      "graphql/cli-plugin"
+    ]
+  },
+  {
+    "id": "graphql/plugins",
+    "titleZh": "插件",
+    "summary": "插件让开发者介入 Apollo Server 或 Mercurius 的请求生命周期，实现日志、缓存、复杂度限制等横切能力。本章讲解用 @Plugin() 编写自定义 Apollo 插件、把插件注册为 provider、使用官方插件，以及 Mercurius 驱动的 plugins 配置方式与加载顺序要求。",
+    "sections": [
+      {
+        "heading": "自定义 Apollo 插件",
+        "text": "用 @nestjs/apollo 的 @Plugin() 标注类并实现 ApolloServerPlugin，在 requestDidStart 中返回监听器（如 willSendResponse）插入自定义逻辑；把插件类注册为 provider 后，Nest 会自动实例化并接入 Apollo Server。"
+      },
+      {
+        "heading": "使用官方插件",
+        "text": "Apollo Server 自带多个插件，例如从 @apollo/server/plugin/cacheControl 导入 ApolloServerPluginCacheControl，再放进 GraphQLModule 的 plugins 数组，由驱动透传给 Apollo Server 即可启用缓存控制。"
+      },
+      {
+        "heading": "Mercurius 插件",
+        "text": "MercuriusDriver 额外的 plugins 选项接收 { plugin, options } 数组，用于把必须在 mercurius 之后加载的 Fastify 插件挂到正确位置；mercurius-upload 是例外，需要在主文件直接注册。"
+      }
+    ],
+    "keyPoints": [
+      "@Plugin() 类实现 ApolloServerPlugin，requestDidStart 返回监听器。",
+      "插件类要注册为 provider，Nest 才会实例化并接入 Apollo Server。",
+      "官方插件放进 GraphQLModule 的 plugins 数组即可生效。",
+      "Mercurius 插件通过 plugins: [{ plugin, options }] 注册。",
+      "mercurius-upload 需在主文件注册，不能走 plugins 数组。"
+    ],
+    "snippets": [
+      {
+        "title": "编写 LoggingPlugin",
+        "lang": "typescript",
+        "code": "import { ApolloServerPlugin, GraphQLRequestListener } from '@apollo/server';\nimport { Plugin } from '@nestjs/apollo';\n\n@Plugin()\nexport class LoggingPlugin implements ApolloServerPlugin {\n  async requestDidStart(): Promise<GraphQLRequestListener<any>> {\n    console.log('Request started');\n    return {\n      async willSendResponse() {\n        console.log('Will send response');\n      },\n    };\n  }\n}\n\n@Module({ providers: [LoggingPlugin] })\nexport class CommonModule {}"
+      },
+      {
+        "title": "注册 Apollo 缓存插件",
+        "lang": "typescript",
+        "code": "import { ApolloServerPluginCacheControl } from '@apollo/server/plugin/cacheControl';\nimport { Module } from '@nestjs/common';\nimport { GraphQLModule } from '@nestjs/graphql';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot({\n      plugins: [\n        ApolloServerPluginCacheControl({ defaultMaxAge: 5 }),\n      ],\n    }),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "@Plugin()",
+      "ApolloServerPlugin",
+      "requestDidStart",
+      "plugins",
+      "GraphQLRequestListener"
+    ],
+    "pitfalls": [
+      "只写 @Plugin() 而不注册为 provider，插件不会被实例化也不会生效。",
+      "Mercurius 相关插件要在 mercurius 之后加载，顺序错误会导致启动失败。",
+      "mercurius-upload 是例外，必须直接在主文件里注册。"
+    ],
+    "enterprise": "把日志、缓存、复杂度保护实现为插件并在根模块统一注册，可让横切策略集中管理，避免散落在各个 resolver 中。",
+    "related": [
+      "graphql/complexity",
+      "graphql/quick-start",
+      "graphql/other-features"
+    ]
+  },
+  {
+    "id": "graphql/complexity",
+    "titleZh": "查询复杂度",
+    "summary": "查询复杂度用于防止客户端用嵌套查询拖垮服务端：为字段定义复杂度数值，并用规则限制单次查询的最大成本。本章介绍基于 graphql-query-complexity 的复杂度插件实现、复杂度估算器的选择，以及在字段和查询/变更级别声明复杂度的方式。",
+    "sections": [
+      {
+        "heading": "复杂度方案",
+        "text": "集成 graphql-query-complexity：用 getComplexity 传入 schema、document、variables 与 estimators 计算查询成本，超过阈值就抛 GraphQLError 拒绝。fieldExtensionsEstimator 读取字段声明的复杂度，simpleEstimator 为未声明字段提供默认值。"
+      },
+      {
+        "heading": "复杂度插件实现",
+        "text": "编写 @Plugin() 类注入 GraphQLSchemaHost，在 requestDidStart 返回的 didResolveOperation 中计算复杂度；阈值可配置，超出时抛错中断请求，也可记录日志用于容量分析与接口调优。"
+      },
+      {
+        "heading": "字段与操作级复杂度",
+        "text": "@Field({ complexity: 3 }) 直接声明字段成本，也可传估算函数；@Query() 与 @Mutation() 同样接受 complexity 属性，可用 options.args 与 options.childComplexity 按参数与子字段成本动态计算。"
+      }
+    ],
+    "keyPoints": [
+      "graphql-query-complexity 通过 getComplexity() 计算单次查询总成本。",
+      "超过最大复杂度时抛 GraphQLError，直接拒绝代价过高的查询。",
+      "fieldExtensionsEstimator 读取字段复杂度，simpleEstimator 提供默认值。",
+      "@Field({ complexity }) 可声明数字或估算函数。",
+      "@Query()、@Mutation() 也支持 complexity，按参数和子成本动态计算。"
+    ],
+    "snippets": [
+      {
+        "title": "实现复杂度限制插件",
+        "lang": "typescript",
+        "code": "import { GraphQLSchemaHost } from '@nestjs/graphql';\nimport { Plugin } from '@nestjs/apollo';\nimport { GraphQLError } from 'graphql';\nimport { fieldExtensionsEstimator, getComplexity, simpleEstimator } from 'graphql-query-complexity';\n\n@Plugin()\nexport class ComplexityPlugin {\n  constructor(private gqlSchemaHost: GraphQLSchemaHost) {}\n\n  async requestDidStart() {\n    const { schema } = this.gqlSchemaHost;\n    return {\n      async didResolveOperation({ request, document }) {\n        const complexity = getComplexity({\n          schema,\n          operationName: request.operationName,\n          query: document,\n          variables: request.variables,\n          estimators: [fieldExtensionsEstimator(), simpleEstimator({ defaultComplexity: 1 })],\n        });\n        if (complexity > 20) throw new GraphQLError(`Too complex: ${complexity}`);\n      },\n    };\n  }\n}"
+      },
+      {
+        "title": "声明字段与查询复杂度",
+        "lang": "typescript",
+        "code": "import { Args, Field, Query } from '@nestjs/graphql';\nimport { ComplexityEstimatorArgs } from 'graphql-query-complexity';\n\n@Field({ complexity: 3 })\ntitle: string;\n\n@Query(() => [Item], {\n  complexity: (options: ComplexityEstimatorArgs) =>\n    options.args.count * options.childComplexity,\n})\nitems(@Args('count') count: number) {\n  return this.itemsService.getItems({ count });\n}"
+      }
+    ],
+    "api": [
+      "getComplexity()",
+      "fieldExtensionsEstimator",
+      "simpleEstimator",
+      "@Field()",
+      "@Query()",
+      "@Mutation()",
+      "ComplexityEstimatorArgs",
+      "GraphQLSchemaHost"
+    ],
+    "pitfalls": [
+      "未给字段声明复杂度时必须配置 simpleEstimator，否则复杂度可能被算成 0。",
+      "复杂度阈值要结合接口实际数据量评估，过低会误伤正常查询。",
+      "估算器按顺序执行，第一个返回数值的结果生效，顺序会影响计算结果。"
+    ],
+    "enterprise": "对外 API 应始终开启复杂度与深度限制，阈值按接口压测结果调优，并在监控中记录被拒绝的查询以便发现滥用。",
+    "related": [
+      "graphql/plugins",
+      "graphql/other-features",
+      "graphql/quick-start"
+    ]
+  }
+]

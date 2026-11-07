@@ -1,0 +1,50 @@
+{
+  "id": "s3-4",
+  "itemId": "s3-4",
+  "stageId": "s3",
+  "stageIndex": 3,
+  "itemIndex": 4,
+  "stageTitleZh": "模块化与依赖注入进阶",
+  "titleZh": "循环依赖与生命周期",
+  "title": "循环依赖与生命周期",
+  "level": "L3",
+  "goal": "识别循环依赖并选择 forwardRef、ModuleRef 或事件解耦；用生命周期钩子做预热与优雅关闭。",
+  "practice": "在操练场构造 A 与 B 循环依赖，分别用 forwardRef 与 ModuleRef 解决。",
+  "deliverable": "解耦后的模块依赖图、启动预热与关闭日志",
+  "accept": "启动打印预热完成，SIGTERM 后连接与队列正常关闭",
+  "minutes": 240,
+  "pageIds": [
+    "fundamentals/circular-dependency",
+    "fundamentals/lifecycle-events",
+    "fundamentals/module-ref"
+  ],
+  "summary": "这套默认代码把 A/B 两个服务做成「A→B→A」的循环依赖：模块层用 forwardRef 打破 import 环，AService 构造注入 forwardRef(BService)，BService 改用 ModuleRef 延迟解析 AService；两个服务还带 OnModuleInit 预热与 OnApplicationShutdown 优雅关闭日志。可改：删掉任一 forwardRef 观察启动报错，或把 ModuleRef 换成两侧构造注入对比两种解法。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/lifecycle",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/a/ping",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/b/ping",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/a/lazy",
+      "expect": 200
+    }
+  ]
+}

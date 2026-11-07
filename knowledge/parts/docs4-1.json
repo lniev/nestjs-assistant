@@ -1,0 +1,304 @@
+[
+  {
+    "id": "data/overview",
+    "titleZh": "数据访问概览",
+    "summary": "Nest 与数据库无关，既可以直接安装任意 SQL 或 NoSQL 驱动、把客户端包装成 provider 注入，也可以在更高抽象层使用 ORM 或查询构建器。本页统览六个官方集成：TypeORM、Drizzle、MongoDB（Mongoose）、Prisma、MikroORM、Sequelize，说明哪些包由 Nest 团队维护，以及如何按场景选型。",
+    "sections": [
+      {
+        "heading": "两种接入层次",
+        "text": "最基础的方式是安装目标数据库的 Node.js 驱动，像在 Express 或 Fastify 中那样建立连接，再用 provider 把客户端暴露给应用其余部分。更高层次则引入 ORM 或查询构建器，获得实体映射、仓储、迁移与类型安全。Nest 不限制选择，同一应用可以混用多种方案。"
+      },
+      {
+        "heading": "官方维护的集成包",
+        "text": "@nestjs/typeorm、@nestjs/drizzle、@nestjs/mongoose 与 @nestjs/sequelize 由 Nest 团队维护，补充了仓储或模型注入、可测试性与异步配置等能力。Prisma 没有 Nest 专用包，需自行包装生成的客户端；@mikro-orm/nestjs 由 MikroORM 团队维护。"
+      },
+      {
+        "heading": "按场景选择集成",
+        "text": "需要装饰器实体与成熟生态选 TypeORM；偏好 TypeScript 优先、无实体类的轻量方案选 Drizzle；文档型数据用 Mongoose；看重 schema 驱动的类型安全客户端选 Prisma；要求 Data Mapper 与 Unit of Work 模式选 MikroORM；已有 Sequelize 项目可平滑接入。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 数据库无关，任意 SQL 或 NoSQL 驱动都能封成 provider",
+      "四个官方包：typeorm、drizzle、mongoose、sequelize",
+      "Prisma 无 Nest 专用包，需自己包装 PrismaClient",
+      "官方包额外提供仓储注入、可测试性与异步配置",
+      "TypeORM 支持关系库与 MongoDB，Mongoose 专用于文档库",
+      "查询结果缓存配合 @nestjs/cache-manager 使用"
+    ],
+    "snippets": [
+      {
+        "title": "用 provider 暴露原生驱动客户端",
+        "lang": "typescript",
+        "code": "import { Injectable, Inject, Module } from '@nestjs/common';\nimport { Pool } from 'pg';\n\nconst PG_POOL = 'PG_POOL';\n\n@Injectable()\nexport class UsersRepository {\n  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}\n\n  async findAll() {\n    const result = await this.pool.query('SELECT * FROM users');\n    return result.rows;\n  }\n}\n\n@Module({\n  providers: [\n    { provide: PG_POOL, useFactory: () => new Pool({ connectionString: process.env.DATABASE_URL }) },\n    UsersRepository,\n  ],\n  exports: [UsersRepository],\n})\nexport class DatabaseModule {}"
+      }
+    ],
+    "api": ["TypeOrmModule", "DrizzleModule", "MongooseModule", "SequelizeModule", "MikroOrmModule", "PrismaClient"],
+    "pitfalls": [
+      "把驱动客户端直接暴露给控制器会破坏分层，应封装在 provider 中",
+      "不同 ORM 对 MongoDB 与关系库支持差异大，选型前确认兼容性",
+      "原始 SQL 与 ORM 混用要统一连接来源，避免事务外的查询"
+    ],
+    "enterprise": "快速起步通常选 TypeORM 或 Prisma：前者生态与文档最全，后者类型安全最强。多数据源与读写分离优先用 forRootAsync 加命名连接，并配合 @nestjs/config 校验配置。",
+    "related": ["data/typeorm", "data/drizzle", "data/mongodb", "data/prisma"]
+  },
+  {
+    "id": "data/typeorm",
+    "titleZh": "TypeORM",
+    "summary": "通过 @nestjs/typeorm 集成 TypeORM：TypeOrmModule.forRoot() 建立 DataSource，forFeature() 注册实体对应的 Repository，再用 @InjectRepository() 注入。页面覆盖实体与关系定义、autoLoadEntities、QueryRunner 事务、事件订阅者、迁移、多数据源、单元测试 mock 以及 forRootAsync 与 dataSourceFactory 异步配置。",
+    "sections": [
+      {
+        "heading": "连接与模块配置",
+        "text": "forRoot() 接受 TypeORM DataSource 构造器的全部配置，并额外支持 retryAttempts、retryDelay、toRetry、autoLoadEntities 与 manualInitialization。配置完成后 DataSource 与 EntityManager 可在任意位置注入。"
+      },
+      {
+        "heading": "仓储模式",
+        "text": "forFeature([User]) 声明当前模块注册哪些仓储，随后用 @InjectRepository(User) 注入 Repository<User>。若要在模块外使用仓储，需 exports: [TypeOrmModule] 重新导出；测试时用 getRepositoryToken(User) 提供 mock 对象。"
+      },
+      {
+        "heading": "事务与事件订阅",
+        "text": "官方推荐用 dataSource.createQueryRunner() 控制事务：connect、startTransaction、try 提交、catch 回滚、finally release。@EventSubscriber 监听实体事件，需把自身 push 进 dataSource.subscribers，且不能是 request-scoped。"
+      },
+      {
+        "heading": "多数据源与异步配置",
+        "text": "每个非默认数据源必须有唯一 name，forFeature 与 @InjectDataSource('name') 按名称区分，工厂 provider 用 getDataSourceToken() 注入。forRootAsync 支持 useFactory、useClass 与 useExisting，也可传 dataSourceFactory 自定义创建。"
+      }
+    ],
+    "keyPoints": [
+      "forRoot() 建连，额外支持 retryAttempts、autoLoadEntities 等选项",
+      "forFeature([Entity]) 注册仓储，@InjectRepository() 注入",
+      "跨模块使用仓储需在模块 exports 中导出 TypeOrmModule",
+      "生产禁用 synchronize: true，否则可能丢失数据",
+      "事务推荐 dataSource.createQueryRunner()，最后必须 release()",
+      "多数据源用唯一 name，配合 @InjectDataSource('name')",
+      "单测用 getRepositoryToken(Entity) 提供 mock 仓储"
+    ],
+    "snippets": [
+      {
+        "title": "实体定义与仓储注入",
+        "lang": "typescript",
+        "code": "import { Entity, Column, PrimaryGeneratedColumn, Repository } from 'typeorm';\nimport { Injectable, Module } from '@nestjs/common';\nimport { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';\n\n@Entity()\nexport class User {\n  @PrimaryGeneratedColumn()\n  id: number;\n\n  @Column()\n  firstName: string;\n\n  @Column({ default: true })\n  isActive: boolean;\n}\n\n@Module({\n  imports: [TypeOrmModule.forFeature([User])],\n  providers: [UsersService],\n})\nexport class UsersModule {}\n\n@Injectable()\nexport class UsersService {\n  constructor(\n    @InjectRepository(User) private readonly usersRepository: Repository<User>,\n  ) {}\n}"
+      },
+      {
+        "title": "QueryRunner 手动事务",
+        "lang": "typescript",
+        "code": "async createMany(users: User[]) {\n  const queryRunner = this.dataSource.createQueryRunner();\n\n  await queryRunner.connect();\n  await queryRunner.startTransaction();\n  try {\n    await queryRunner.manager.save(users[0]);\n    await queryRunner.manager.save(users[1]);\n    await queryRunner.commitTransaction();\n  } catch (err) {\n    await queryRunner.rollbackTransaction();\n  } finally {\n    await queryRunner.release();\n  }\n}"
+      }
+    ],
+    "api": ["TypeOrmModule", "forRoot()", "forRootAsync()", "forFeature()", "@InjectRepository()", "DataSource", "QueryRunner", "getRepositoryToken()", "autoLoadEntities", "EntitySchema"],
+    "pitfalls": [
+      "synchronize: true 只用于开发，生产环境会改表甚至丢数据",
+      "手动创建的 QueryRunner 必须 release()，否则连接池耗尽",
+      "forRootAsync 的 name 要写在 useFactory 外层，否则注入错 token"
+    ],
+    "enterprise": "业务模块各自 forFeature 自己的实体，根模块用 forRootAsync 从 ConfigService 读配置并开启 autoLoadEntities。迁移交给 TypeORM CLI，与应用启动解耦。",
+    "related": ["data/mikroorm", "data/sequelize", "fundamentals/custom-providers", "fundamentals/async-providers"]
+  },
+  {
+    "id": "data/drizzle",
+    "titleZh": "Drizzle",
+    "summary": "通过 @nestjs/drizzle 集成轻量、TypeScript 优先的 Drizzle ORM。用 pgTable() 等函数声明 schema 并导出表，DrizzleModule.forRoot({ drizzle, connection }) 全局注册数据库，@InjectDrizzle() 注入 db 实例；没有 forFeature、实体类或代码生成步骤。页面涵盖 schema 与类型推导、关系、事务、自定义仓储、迁移、多数据库与测试。",
+    "sections": [
+      {
+        "heading": "Schema 与模块注册",
+        "text": "用 pgTable() 之类的函数声明表，$inferSelect 与 $inferInsert 从表定义推导行类型，无需模型类。forRoot() 接收驱动的 drizzle() 函数、connection、可选的 db 实例、autoCloseConnection 以及 relations、logger 等透传选项，每个应用实例各自建立连接池。"
+      },
+      {
+        "heading": "查询与关系",
+        "text": "Drizzle 没有 forFeature：表是普通对象，数据库全局注册，任何 provider 都能注入。查询在 await 或从 async 函数返回时才执行，结果类型由所选列推导。关系用 defineRelations() 声明后传给 drizzle()，即可用 db.query 做嵌套读取，无需手写 join。"
+      },
+      {
+        "heading": "事务与自定义仓储",
+        "text": "db.transaction(async tx => ...) 的 tx 暴露与数据库相同的查询 API，回调抛错或 tx.rollback() 会整体回滚，否则提交并返回结果；事务内必须走 tx。Drizzle 没有仓储层，建议把一张表的查询收拢到自定义 @Injectable() 仓储 provider，便于测试替换。"
+      },
+      {
+        "heading": "迁移与多数据库",
+        "text": "Drizzle Kit 读取 drizzle.config.ts，generate 生成 SQL、migrate 应用，运行在 Nest 之外，不能用依赖注入。想在启动时迁移可在 forRootAsync 工厂里调用 migrate()，但多实例会重复执行。多数据库为每个连接注册一个 forRoot 并设置唯一 name。"
+      }
+    ],
+    "keyPoints": [
+      "DrizzleModule.forRoot() 注册数据库，@InjectDrizzle() 注入 db",
+      "表用 pgTable() 声明，$inferSelect/$inferInsert 推导行类型",
+      "没有 forFeature 与实体类，类型在编译期完成检查",
+      "关系用 defineRelations() 声明，供 db.query 嵌套读取",
+      "事务用 db.transaction()，查询必须走 tx 而非注入的 db",
+      "迁移由 Drizzle Kit 在应用外执行，生产作独立发布步骤",
+      "多数据库用唯一 name，并 @InjectDrizzle('analytics') 指定"
+    ],
+    "snippets": [
+      {
+        "title": "表定义与类型推导",
+        "lang": "typescript",
+        "code": "import { boolean, integer, pgTable, text } from 'drizzle-orm/pg-core';\n\nexport const users = pgTable('users', {\n  id: integer().primaryKey().generatedAlwaysAsIdentity(),\n  firstName: text('first_name').notNull(),\n  lastName: text('last_name').notNull(),\n  isActive: boolean('is_active').notNull().default(true),\n});\n\nexport type User = typeof users.$inferSelect;\nexport type NewUser = typeof users.$inferInsert;"
+      },
+      {
+        "title": "事务内更新与删除",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { InjectDrizzle } from '@nestjs/drizzle';\nimport { eq } from 'drizzle-orm';\n\n@Injectable()\nexport class UsersService {\n  constructor(@InjectDrizzle() private readonly db: Database) {}\n\n  async deactivate(id: number) {\n    await this.db.transaction(async (tx) => {\n      await tx.update(users).set({ isActive: false }).where(eq(users.id, id));\n      await tx.delete(photos).where(eq(photos.userId, id));\n    });\n  }\n}"
+      }
+    ],
+    "api": ["DrizzleModule", "forRoot()", "forRootAsync()", "@InjectDrizzle()", "getDrizzleToken()", "defineRelations()", "$inferSelect", "$inferInsert", "DrizzleOptionsFactory", "Drizzle Kit"],
+    "pitfalls": [
+      "把自建 db 实例传给 forRoot 会被所有应用实例共享，e2e 首个关闭即失效",
+      "事务内若仍用注入的 db 而不是 tx，语句就落在事务之外",
+      "forRoot 选项在导入 AppModule 时求值，process.env 必须已就绪"
+    ],
+    "enterprise": "适合追求零代码生成、类型推导彻底的团队。把查询收拢到自定义 Repository provider，业务层只依赖仓储；迁移统一在发布流水线执行，避免多实例并发迁移。",
+    "related": ["data/typeorm", "data/prisma", "recipes/async-local-storage", "data/caching"]
+  },
+  {
+    "id": "data/mongodb",
+    "titleZh": "MongoDB（Mongoose）",
+    "summary": "使用 @nestjs/mongoose 集成 Mongoose 访问 MongoDB：MongooseModule.forRoot() 建立连接，@Schema() 与 @Prop() 装饰器声明 schema，forFeature() 注册模型并用 @InjectModel() 注入 Model。页面涵盖 schema 工厂、连接注入、Session 事务、多连接、pre/post 钩子与插件、Discriminator、子文档、Virtual、测试 mock 与 forRootAsync。",
+    "sections": [
+      {
+        "heading": "Schema 与模型定义",
+        "text": "@Schema() 把类标记为 schema 并映射到同名集合，集合名自动复数化。@Prop() 声明字段，简单类型由 TypeScript 元数据推断；数组与嵌套对象要显式写 @Prop([String]) 或 raw({...})。最后用 SchemaFactory.createForClass() 生成。"
+      },
+      {
+        "heading": "模型注入与测试",
+        "text": "MongooseModule.forFeature([{ name: Cat.name, schema: CatSchema }]) 声明当前模块模型，@InjectModel(Cat.name) 注入 Model<Cat>。跨模块时把 MongooseModule 加入 exports；单测用 getModelToken 提供 mock。"
+      },
+      {
+        "heading": "钩子与插件",
+        "text": "模型编译后再调用 pre() 或 post() 不会生效，因此要用 forFeatureAsync() 配合工厂，在返回 schema 前注册钩子或调用 schema.plugin()。若为所有 schema 注册插件，可在 forRoot 的 connectionFactory 里操作 Connection 的 .plugin()，此时模型尚未创建。"
+      },
+      {
+        "heading": "多连接与高级特性",
+        "text": "多连接必须设置 connectionName，forFeature 与 @InjectModel 的第二个参数传连接名，@InjectConnection('cats') 注入连接，工厂用 getConnectionToken()。Discriminator 用 discriminators 选项注册；@Virtual() 声明不持久化属性。"
+      }
+    ],
+    "keyPoints": [
+      "MongooseModule.forRoot() 建连，参数与 mongoose.connect() 相同",
+      "@Schema() 映射集合并自动复数化，@Prop() 定义字段选项",
+      "forFeature() 注册模型，@InjectModel(Cat.name) 注入 Model",
+      "钩子与插件必须用 forFeatureAsync() 在建模前注册",
+      "多连接必须命名，注入时传连接名或 getConnectionToken()",
+      "@Virtual() 声明不写入 MongoDB 的计算属性",
+      "getModelToken() 返回模型 token，可提供 mock 做单测"
+    ],
+    "snippets": [
+      {
+        "title": "定义 schema 并注入模型",
+        "lang": "typescript",
+        "code": "import { Prop, Schema, SchemaFactory, InjectModel } from '@nestjs/mongoose';\nimport { Model, HydratedDocument } from 'mongoose';\n\n@Schema()\nexport class Cat {\n  @Prop({ required: true })\n  name: string;\n\n  @Prop()\n  age: number;\n}\n\nexport const CatSchema = SchemaFactory.createForClass(Cat);\nexport type CatDocument = HydratedDocument<Cat>;\n\n@Injectable()\nexport class CatsService {\n  constructor(@InjectModel(Cat.name) private catModel: Model<Cat>) {}\n}"
+      },
+      {
+        "title": "注册 schema 钩子",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [\n    MongooseModule.forFeatureAsync([\n      {\n        name: Cat.name,\n        useFactory: () => {\n          const schema = CatSchema;\n          schema.pre('save', function () {\n            console.log('Hello from pre save');\n          });\n          return schema;\n        },\n      },\n    ]),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": ["MongooseModule", "forRoot()", "forRootAsync()", "forFeature()", "forFeatureAsync()", "@Schema()", "@Prop()", "@InjectModel()", "@InjectConnection()", "getModelToken()"],
+    "pitfalls": [
+      "模型编译后再调用 schema.pre() 或 post() 无效，必须用 forFeatureAsync()",
+      "多连接不设 connectionName 会互相覆盖，命名是强制的",
+      "@Prop() 对数组与嵌套对象无法反射类型，需显式声明 type 或 raw()"
+    ],
+    "enterprise": "文档模型适合内容、日志、商品属性等半结构化数据。schema 放在对应领域模块的 schemas 目录并通过 MongooseModule 导出；跨集合写入用 startSession() 管理事务并 commit 或 abort。",
+    "related": ["data/typeorm", "data/prisma", "data/overview", "fundamentals/custom-providers"]
+  },
+  {
+    "id": "data/prisma",
+    "titleZh": "Prisma",
+    "summary": "Prisma 没有 Nest 专用包：先从 schema 生成类型安全的 Prisma Client，再包装成 PrismaService provider 注入使用。页面以 SQLite 为例讲清 schema.prisma、generator 输出目录与 moduleFormat、migrate dev 与 generate 流程、Prisma ORM 7 的 driver adapter、连接生命周期、查询与事务、测试 mock 以及各数据库差异。",
+    "sections": [
+      {
+        "heading": "初始化与生成客户端",
+        "text": "执行 prisma init 会创建 schema.prisma、prisma7.config.ts 与 .env。generator 的 output 决定客户端位置，放进 src 才会随应用编译；改 schema 后要重新 prisma generate；CommonJS 项目需把 moduleFormat 设为 cjs。"
+      },
+      {
+        "heading": "服务与连接生命周期",
+        "text": "PrismaService 继承 PrismaClient，构造函数通过 ConfigService 读取 DATABASE_URL，再把驱动适配器传给 super({ adapter })，Prisma ORM 7 必须提供适配器。onModuleInit 调 $connect()，onModuleDestroy 调 $disconnect()。"
+      },
+      {
+        "heading": "查询与事务",
+        "text": "注入 PrismaService 后通过 this.prisma.user.findUnique、findMany、create、update、delete 等模型属性查询，参数与返回值直接复用生成的类型。$transaction 支持嵌套写入、数组顺序执行与交互式事务；交互式事务内所有查询必须使用回调参数 tx。"
+      },
+      {
+        "heading": "测试与模块组织",
+        "text": "PrismaService 是普通类 provider，测试中用 { provide: PrismaService, useValue: prismaMock } 整体替换，onModuleInit 不会执行；导入 PrismaModule 时用 overrideProvider()。PrismaModule 负责 providers 与 exports。"
+      }
+    ],
+    "keyPoints": [
+      "Prisma 无 Nest 官方包，生成客户端后用 provider 包装",
+      "PrismaService 继承 PrismaClient 并实现两个生命周期钩子",
+      "Prisma ORM 7 必须通过 driver adapter 创建客户端",
+      "生成的类型只在编译期存在，请求体校验仍需 DTO",
+      "$connect() 放在 onModuleInit，让配置错误在启动时失败",
+      "交互式事务内查询必须使用 tx，不能用 this.prisma",
+      "单测用 useValue 替换 PrismaService，避免真实连库"
+    ],
+    "snippets": [
+      {
+        "title": "PrismaService 实现",
+        "lang": "typescript",
+        "code": "import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';\nimport { PrismaClient } from '../generated/prisma/client.js';\n\n@Injectable()\nexport class PrismaService\n  extends PrismaClient\n  implements OnModuleInit, OnModuleDestroy\n{\n  constructor(configService: ConfigService) {\n    const adapter = new PrismaBetterSqlite3({\n      url: configService.getOrThrow<string>('DATABASE_URL'),\n    });\n    super({ adapter });\n  }\n\n  async onModuleInit() {\n    await this.$connect();\n  }\n\n  async onModuleDestroy() {\n    await this.$disconnect();\n  }\n}"
+      },
+      {
+        "title": "交互式事务删除用户",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class UsersService {\n  constructor(private readonly prisma: PrismaService) {}\n\n  async deleteUserWithPosts(id: number): Promise<User> {\n    return this.prisma.$transaction(async (tx) => {\n      await tx.post.deleteMany({ where: { authorId: id } });\n      return tx.user.delete({ where: { id } });\n    });\n  }\n}"
+      }
+    ],
+    "api": ["PrismaClient", "PrismaService", "$connect()", "$disconnect()", "$transaction()", "prisma generate", "prisma migrate dev", "OnModuleInit", "OnModuleDestroy", "driver adapter"],
+    "pitfalls": [
+      "改了 schema 忘记 prisma generate，客户端与类型会过期",
+      "Prisma ORM 7 依赖 driver adapter，缺失或不匹配会导致启动失败",
+      "CommonJS 项目未设 cjs 格式会生成 ESM 客户端而报错"
+    ],
+    "enterprise": "适合把数据库 schema 作为单一真相源、要求端到端类型安全的项目。PrismaService 放在独立 PrismaModule 并导出，大型项目可加 @Global()；CI 先 generate 再构建。",
+    "related": ["data/typeorm", "data/drizzle", "application/configuration", "fundamentals/lifecycle-events"]
+  },
+  {
+    "id": "data/mikroorm",
+    "titleZh": "MikroORM",
+    "summary": "通过第三方包 @mikro-orm/nestjs 集成基于 Data Mapper、Unit of Work、Identity Map 模式的 MikroORM，支持 MongoDB、MySQL、PostgreSQL、SQLite、SQL Server 与 Oracle。MikroOrmModule 注册 ORM 与 EntityManager、提供仓储注入、为每个请求创建 RequestContext、在应用关闭时断开连接。",
+    "sections": [
+      {
+        "heading": "注册与配置",
+        "text": "MikroOrmModule.forRoot() 接受 MikroORM.init() 的配置，如 dbName、entities 与 driver；v7 起需显式设置 ReflectMetadataProvider。它还支持 autoLoadEntities、registerRequestContext、scope 与 contextName。"
+      },
+      {
+        "heading": "仓储与请求上下文",
+        "text": "forFeature([Photo]) 声明当前模块的仓储，@InjectRepository(Photo) 注入 EntityRepository，写操作通过 EntityManager：create() 标记待持久化，em.flush() 一次性写入。模块为所有路由创建 RequestContext，EntityManager 会代理到请求分支。"
+      },
+      {
+        "heading": "事务与序列化",
+        "text": "em.flush() 天然把所有挂起的写操作包进一个事务；需要自定义边界时用 em.transactional(async em => ...) 或 @Transactional()，前者开启嵌套事务，后者加入现有事务。实体自带 toJSON()，不要再用 ClassSerializerInterceptor，否则 Collection 会递归溢出。"
+      },
+      {
+        "heading": "多数据库与队列",
+        "text": "多库为每个数据库调用一次 forRoot 并设置唯一 contextName，关闭各连接的 registerRequestContext，改用 forMiddleware() 统一创建上下文；forFeature 与 @InjectRepository 传 contextName 区分。队列与定时任务用 @CreateRequestContext()。"
+      }
+    ],
+    "keyPoints": [
+      "@mikro-orm/nestjs 是第三方包，由 MikroORM 团队维护",
+      "forFeature([Entity]) 注册仓储，@InjectRepository() 注入仓储",
+      "写操作需 em.flush()，工作单元在一个事务里统一写入",
+      "HTTP 请求自动运行在 RequestContext，隔离 Identity Map",
+      "队列与定时任务用 @CreateRequestContext() 创建上下文",
+      "v7 装饰器从 @mikro-orm/decorators/legacy 导入",
+      "多数据库必须设唯一 contextName 并用 forMiddleware()"
+    ],
+    "snippets": [
+      {
+        "title": "定义实体并注入仓储",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { InjectRepository } from '@mikro-orm/nestjs';\nimport { EntityManager, EntityRepository } from '@mikro-orm/sqlite';\nimport { Entity, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';\n\n@Entity()\nexport class Photo {\n  @PrimaryKey()\n  id: number;\n\n  @Property()\n  name: string;\n}\n\n@Injectable()\nexport class PhotoService {\n  constructor(\n    @InjectRepository(Photo) private readonly repo: EntityRepository<Photo>,\n    private readonly em: EntityManager,\n  ) {}\n}"
+      },
+      {
+        "title": "@Transactional 包装方法",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport { Transactional } from '@mikro-orm/decorators/legacy';\nimport { EntityManager } from '@mikro-orm/sqlite';\n\n@Injectable()\nexport class PhotoService {\n  constructor(private readonly em: EntityManager) {}\n\n  @Transactional()\n  async createMany(names: string[]): Promise<void> {\n    for (const name of names) {\n      this.em.create(Photo, { name });\n    }\n  }\n}"
+      }
+    ],
+    "api": ["MikroOrmModule", "forRoot()", "forRootAsync()", "forFeature()", "@InjectRepository()", "EntityManager", "EntityRepository", "@CreateRequestContext()", "@Transactional()", "autoLoadEntities"],
+    "pitfalls": [
+      "v7 起装饰器不再从 @mikro-orm/core 导出，需从 legacy 子路径导入",
+      "把 EntityManager 设为 Scope.REQUEST 会让相关 provider 全部请求级",
+      "@CreateRequestContext() 要放在 @Cron 等装饰器下方并紧贴方法"
+    ],
+    "enterprise": "适合需要严格领域模型与工作单元语义的中大型系统。配置放 mikro-orm.config.ts 供 CLI 共用，业务模块各自 forFeature；队列消费者与定时任务统一加 @CreateRequestContext()。",
+    "related": ["data/typeorm", "data/prisma", "fundamentals/injection-scopes", "application/queues"]
+  }
+]

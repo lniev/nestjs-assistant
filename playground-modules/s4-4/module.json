@@ -1,0 +1,49 @@
+{
+  "id": "s4-4",
+  "itemId": "s4-4",
+  "stageId": "s4",
+  "stageIndex": 4,
+  "itemIndex": 4,
+  "stageTitleZh": "数据、配置与缓存",
+  "titleZh": "缓存与读性能",
+  "title": "缓存与读性能",
+  "level": "L3",
+  "goal": "用 CacheModule 与 CacheInterceptor 缓存热点读接口，设计 TTL 与失效策略，理解一致性代价。",
+  "practice": "在操练场给 GET /products/:id 加 CacheInterceptor，比较两次耗时。",
+  "deliverable": "商品详情缓存与更新后的主动失效",
+  "accept": "二次请求命中缓存，更新后返回新值且旧缓存被清除",
+  "minutes": 300,
+  "pageIds": [
+    "data/caching",
+    "http/performance"
+  ],
+  "summary": "手写 cache-manager 等价物：CacheService 提供带 TTL 的内存缓存与命中统计，CacheInterceptor 只缓存 GET（key 取 URL、TTL 由 @CacheTtl 覆盖），挂在慢查询商品列表/详情上，写接口更新后按前缀主动失效。可改：调整 TTL、给列表加分页参数观察 key 变化，或去掉 PATCH 里的失效逻辑对比一致性代价。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/products",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/products/1",
+      "expect": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/products/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cache/stats",
+      "expect": 200
+    }
+  ]
+}

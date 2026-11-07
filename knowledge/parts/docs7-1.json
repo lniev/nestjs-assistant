@@ -1,0 +1,384 @@
+[
+  {
+    "id": "graphql/quick-start",
+    "titleZh": "快速上手",
+    "summary": "本章介绍如何在 NestJS 中接入 GraphQL：安装 @nestjs/graphql 与驱动包，通过 GraphQLModule.forRoot() 注册 Apollo 或 Mercurius 驱动，并选择代码优先或架构优先两种开发模式。代码优先用装饰器生成 SDL，架构优先以 SDL 为唯一事实来源并反向生成 TypeScript 类型；此外还覆盖异步配置、多端点、GraphiQL 与请求上下文。",
+    "sections": [
+      {
+        "heading": "两种构建模式",
+        "text": "Nest 提供代码优先与架构优先两种方式。代码优先用装饰器和 TypeScript 类推导 GraphQL schema，适合只写 TypeScript 的团队；架构优先以 SDL 文件为唯一事实来源，让 Nest 生成对应的类型定义，适合跨语言共享 schema。后续各章通常按这两种模式分别讲解。"
+      },
+      {
+        "heading": "模块注册与驱动",
+        "text": "用 GraphQLModule.forRoot<ApolloDriverConfig>() 传入 driver: ApolloDriver 即可启动，Fastify 场景可换用 MercuriusDriver；选项会透传给底层驱动，例如 graphiql: false 关闭 IDE，context 工厂可暴露 req、res。"
+      },
+      {
+        "heading": "代码优先与架构优先",
+        "text": "代码优先设置 autoSchemaFile 指定 SDL 输出路径，或设为 true 只在内存生成，可用 sortSchema 排序。架构优先设置 typePaths 指向 .graphql 文件，并配置 definitions.path 自动生成 TypeScript 定义，outputAs: 'class' 可生成类而非接口。"
+      },
+      {
+        "heading": "异步配置与多端点",
+        "text": "需要从配置服务读取选项时用 forRootAsync()，支持 useFactory（可 async、可 inject）、useClass（实现 GqlOptionsFactory）与 useExisting。多个端点用 include 限定扫描的模块，代码优先下还要用 registerIn 把具体类型绑定到某个模块，避免类型污染所有 schema。"
+      }
+    ],
+    "keyPoints": [
+      "forRoot() 传入 driver: ApolloDriver 即可启动 GraphQL 服务。",
+      "autoSchemaFile 指定 SDL 输出路径，设为 true 则只在内存生成。",
+      "typePaths 加载 .graphql 文件，definitions 反向生成 TS 类型。",
+      "forRootAsync() 支持 useFactory、useClass、useExisting。",
+      "GraphQLSchemaHost 可获取 GraphQLSchema 供 e2e 测试直接查询。",
+      "多端点用 include 限制模块范围，类型用 registerIn 归属端点。",
+      "subscriptions 开启 graphql-ws 后，GraphiQL 可直接执行订阅。"
+    ],
+    "snippets": [
+      {
+        "title": "启用代码优先模式",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { GraphQLModule } from '@nestjs/graphql';\nimport { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';\nimport { join } from 'node:path';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot<ApolloDriverConfig>({\n      driver: ApolloDriver,\n      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n      sortSchema: true,\n      context: ({ req, res }) => ({ req, res }),\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "异步配置 GraphQL 模块",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule, ConfigService } from '@nestjs/config';\nimport { GraphQLModule } from '@nestjs/graphql';\nimport { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';\n\n@Module({\n  imports: [\n    ConfigModule.forRoot(),\n    GraphQLModule.forRootAsync<ApolloDriverConfig>({\n      driver: ApolloDriver,\n      imports: [ConfigModule],\n      inject: [ConfigService],\n      useFactory: async (config: ConfigService) => ({\n        autoSchemaFile: true,\n        graphiql: true,\n      }),\n    }),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "GraphQLModule.forRoot()",
+      "GraphQLModule.forRootAsync()",
+      "ApolloDriver",
+      "autoSchemaFile",
+      "typePaths",
+      "definitions",
+      "GraphQLSchemaHost",
+      "GqlOptionsFactory",
+      "@Context()"
+    ],
+    "pitfalls": [
+      "playground 在 v14 已移除，仅剩 graphiql 的废弃布尔别名，应直接用 graphiql。",
+      "代码优先下 include 只限制解析器扫描范围，类型要配合 registerIn 才能限定到指定端点。",
+      "@nestjs/apollo v14 需要 Apollo Server v5，升级时需按官方迁移指南处理不兼容改动。"
+    ],
+    "enterprise": "企业项目建议统一使用代码优先以复用 TypeScript 类型，并只把 schema.gql 纳入版本库用于评审；跨团队契约优先时改用架构优先，把 SDL 作为接口契约与前端共享。",
+    "related": [
+      "graphql/resolvers",
+      "graphql/generating-sdl",
+      "graphql/other-features",
+      "fundamentals/dynamic-modules"
+    ]
+  },
+  {
+    "id": "graphql/resolvers",
+    "titleZh": "解析器",
+    "summary": "解析器把 GraphQL 操作（查询、变更、订阅）转换成数据，Nest 依据装饰器元数据自动生成 resolver map。本章用作者与文章示例讲解代码优先下的 @ObjectType()、@Field() 对象类型定义，@Resolver()、@Query()、@ResolveField() 解析器写法，@Args() 参数与 @ArgsType() 参数类，以及继承与泛型复用方式，并给出架构优先的对应写法。",
+    "sections": [
+      {
+        "heading": "对象类型与字段",
+        "text": "schema 中的大部分定义是对象类型。代码优先用 @ObjectType() 标注类，用 @Field() 标注每个字段；number 无法区分 Int 与 Float，必须传类型函数，数组写成 @Field(() => [Post])。nullable、description、deprecationReason 可在选项对象中声明。"
+      },
+      {
+        "heading": "解析器与字段解析",
+        "text": "@Resolver() 标注解析器类，@Query() 定义查询入口，@ResolveField() 定义对象字段的解析函数。类中有字段解析器时必须给 @Resolver() 传入父类型，再用 @Parent() 取出父对象；方法名默认映射为 GraphQL 字段名，可用 name 选项解耦。"
+      },
+      {
+        "heading": "参数与参数类",
+        "text": "@Args() 从请求中提取参数，原始字符串类型可直接写参数名，number 等需要显式 type 函数；选项支持 defaultValue、description 与 nullable。参数变多时用 @ArgsType() 定义专用参数类，可配合 class-validator 与 ValidationPipe 复用校验规则。"
+      },
+      {
+        "heading": "继承与泛型复用",
+        "text": "@ArgsType() 与 @ObjectType() 支持普通类继承，可把分页字段放在基类。解析器也可用泛型工厂生成基类，配合 @Resolver({ isAbstract: true }) 避免为抽象类生成 SDL，字段定义与校验逻辑都能在子类中复用。"
+      }
+    ],
+    "keyPoints": [
+      "@ObjectType()、@Field() 定义对象类型，number 字段需显式 type 函数。",
+      "数组字段用 @Field(() => [Post])，元素可空设 nullable: 'items'。",
+      "@Query()、@ResolveField() 默认以方法名为字段名，可用 name 选项解耦。",
+      "含字段解析器的类必须在 @Resolver() 中指明父类型，并用 @Parent() 取得父对象。",
+      "@ArgsType() 定义参数类，可复用 class-validator 与 ValidationPipe。",
+      "isAbstract: true 让 SDL 跳过抽象类型，泛型工厂函数可批量复用查询与分页结构。"
+    ],
+    "snippets": [
+      {
+        "title": "定义 Author 对象类型",
+        "lang": "typescript",
+        "code": "import { Field, Int, ObjectType } from '@nestjs/graphql';\nimport { Post } from '../../posts/models/post.model';\n\n@ObjectType()\nexport class Author {\n  @Field(() => Int)\n  id: number;\n\n  @Field({ nullable: true })\n  firstName?: string;\n\n  @Field({ nullable: true })\n  lastName?: string;\n\n  @Field(() => [Post])\n  posts: Post[];\n}"
+      },
+      {
+        "title": "编写解析器与字段解析",
+        "lang": "typescript",
+        "code": "import {\n  Args, Int, Parent, Query, ResolveField, Resolver,\n} from '@nestjs/graphql';\n\n@Resolver(() => Author)\nexport class AuthorsResolver {\n  constructor(\n    private authorsService: AuthorsService,\n    private postsService: PostsService,\n  ) {}\n\n  @Query(() => Author, { name: 'author' })\n  async getAuthor(@Args('id', { type: () => Int }) id: number) {\n    return this.authorsService.findOneById(id);\n  }\n\n  @ResolveField('posts', () => [Post])\n  async getPosts(@Parent() author: Author) {\n    return this.postsService.findAll({ authorId: author.id });\n  }\n}"
+      }
+    ],
+    "api": [
+      "@ObjectType()",
+      "@Field()",
+      "@Resolver()",
+      "@Query()",
+      "@ResolveField()",
+      "@Args()",
+      "@ArgsType()",
+      "@Parent()",
+      "@Context()",
+      "@Info()"
+    ],
+    "pitfalls": [
+      "TypeScript 反射拿不到字段信息，必须逐个写 @Field()，或启用 GraphQL CLI 插件自动生成。",
+      "GraphQL 字段默认非空，可空字段必须显式 nullable: true，且解析器要处理 null。",
+      "方法级 @Resolver 只在架构优先下有效，代码优先必须在类级别声明父类型。"
+    ],
+    "enterprise": "建议按领域模块组织 models、resolvers、services，解析器只做编排、业务逻辑下沉到 service，并用 @ArgsType() 参数类与 ValidationPipe 统一校验入口。",
+    "related": [
+      "graphql/quick-start",
+      "graphql/mutations",
+      "graphql/cli-plugin",
+      "application/validation"
+    ]
+  },
+  {
+    "id": "graphql/mutations",
+    "titleZh": "变更",
+    "summary": "GraphQL 的写操作通过变更（mutation）显式表达。本章讲解如何用 @Mutation() 在代码优先模式下定义变更、如何用 @InputType() 声明可复用的输入类型来传递对象参数、如何让变更负载携带根 Query 字段以便客户端一次往返完成回查，并给出架构优先下补充 SDL 的写法。",
+    "sections": [
+      {
+        "heading": "定义变更操作",
+        "text": "@Mutation() 标注在解析器方法上，字段名默认派生自方法名，返回值类型用类型函数指定，参数通过 @Args() 提取。例如 upvotePost(postId: Int!) 返回更新后的 Post；number 参数必须显式声明 Int，否则无法确定 GraphQL 类型。"
+      },
+      {
+        "heading": "输入类型传对象参数",
+        "text": "变更需要接收对象时，用 @InputType() 声明输入类型，字段仍用 @Field() 标注。输入类型可以带描述与默认值，但 TypeScript 反射无法推断字段身份，必须显式标注或启用 CLI 插件；之后在 @Args('upvotePostData') 中直接使用该类即可。"
+      },
+      {
+        "heading": "变更负载回查根查询",
+        "text": "变更负载对象可以暴露根 Query 类型：代码优先用 @Field(() => 'Query') 声明字段，返回时填入任意对象，因为根查询解析器不依赖父对象；架构优先则在 SDL 负载类型上声明 query: Query!。这样客户端一次变更即可顺带取回最新数据。"
+      },
+      {
+        "heading": "架构优先写法",
+        "text": "架构优先下 @Mutation() 默认以方法名匹配 SDL 中的 Mutation 字段，参数用 @Args('postId') 提取；最后在 .graphql 文件中补充 type Mutation 定义，Nest 启动时聚合所有 SDL 并完成解析器绑定。"
+      }
+    ],
+    "keyPoints": [
+      "@Mutation() 声明写操作，GraphQL 约定所有产生副作用的请求都显式走变更。",
+      "变更字段名默认取方法名，可通过装饰器选项或 SDL 字段名完成解耦。",
+      "@InputType() 定义可作为参数的输入类型，字段同样需要 @Field() 标注。",
+      "变更负载用 @Field(() => 'Query') 暴露根查询，客户端一次往返即可回查数据。",
+      "架构优先只需在 SDL 中补充 type Mutation，解析器方法名自动完成映射。"
+    ],
+    "snippets": [
+      {
+        "title": "定义 upvotePost 变更",
+        "lang": "typescript",
+        "code": "import { Args, Int, Mutation, Resolver } from '@nestjs/graphql';\n\n@Resolver(() => Post)\nexport class PostsResolver {\n  constructor(private postsService: PostsService) {}\n\n  @Mutation(() => Post)\n  async upvotePost(\n    @Args('postId', { type: () => Int }) postId: number,\n  ) {\n    return this.postsService.upvoteById({ id: postId });\n  }\n}"
+      },
+      {
+        "title": "声明并使用输入类型",
+        "lang": "typescript",
+        "code": "import { Args, Field, InputType, Mutation } from '@nestjs/graphql';\n\n@InputType()\nexport class UpvotePostInput {\n  @Field()\n  postId: number;\n}\n\n@Mutation(() => Post)\nasync upvotePost(\n  @Args('upvotePostData') upvotePostData: UpvotePostInput,\n) {\n  return this.postsService.upvoteById(upvotePostData);\n}"
+      }
+    ],
+    "api": [
+      "@Mutation()",
+      "@InputType()",
+      "@Field()",
+      "@Args()"
+    ],
+    "pitfalls": [
+      "变更接收对象参数时必须定义 @InputType()，不能直接把 @ObjectType() 类当作参数类型。",
+      "number 参数无法自动推断 GraphQL 类型，@Args() 中不写 type 函数可能被映射为 Float。",
+      "变更返回值必须与类型函数一致，否则 schema 校验或运行时解析会失败。"
+    ],
+    "enterprise": "企业项目建议把写操作集中在领域模块的 resolver，输入类型放 dto 目录并配 class-validator；复杂变更通过负载返回 Query 或受影响实体，减少客户端二次请求。",
+    "related": [
+      "graphql/resolvers",
+      "graphql/subscriptions",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "graphql/subscriptions",
+    "titleZh": "订阅",
+    "summary": "订阅让服务器在特定事件发生时主动向客户端推送数据。本章介绍如何用 graphql-ws 开启 WebSocket 传输，在代码优先模式下用 @Subscription() 与 PubSub 实现发布/订阅，并通过 filter、resolve 过滤和转换事件负载，最后说明 onConnect 鉴权与订阅服务端定制。",
+    "sections": [
+      {
+        "heading": "启用订阅传输",
+        "text": "订阅通过 WebSocket 传输，@nestjs/graphql 依赖 graphql-ws；配置 subscriptions: { 'graphql-ws': true } 即可开启。v14 已移除 subscriptions-transport-ws，新旧协议在网络上不兼容，升级时必须同时替换服务端配置与客户端实现。"
+      },
+      {
+        "heading": "订阅与发布",
+        "text": "代码优先用 @Subscription() 标注处理器，返回 PubSub#asyncIterableIterator(triggerName) 完成订阅注册；发布用 PubSub#publish(triggerName, payload)。负载形状必须与 SDL 中订阅返回对象的顶层字段一致，否则事件解析失败。"
+      },
+      {
+        "heading": "过滤与转换负载",
+        "text": "filter 接收 payload 与 variables，返回布尔值决定事件是否推送给客户端；resolve 用于解包或改写负载，使用 resolve 时应返回未包装的负载本身。需要访问依赖时用 function 语法声明 this 为解析器实例，从而调用注入的提供者。"
+      },
+      {
+        "heading": "鉴权与服务端定制",
+        "text": "Apollo 下用 onConnect 读取 connectionParams 校验令牌，附加上下文写入 extra 供 context 工厂读取；还可传入自定义 ws WebSocketServer（必须 noServer: true）定制路径与 maxPayload。Mercurius 则用 verifyClient 与 mqemitter-redis。"
+      }
+    ],
+    "keyPoints": [
+      "subscriptions 设 'graphql-ws': true 即开启 WebSocket 订阅传输。",
+      "@Subscription() 配合 asyncIterableIterator() 返回异步迭代器完成注册。",
+      "发布事件用 PubSub#publish，负载形状必须与订阅字段的顶层结构匹配。",
+      "filter 按 payload 与 variables 过滤事件，resolve 可转换或解包负载。",
+      "onConnect 校验 connectionParams，额外上下文写入 extra 字段。",
+      "生产环境应把 PubSub 换成外部存储实现，并通过 PUB_SUB 提供者全局复用实例。"
+    ],
+    "snippets": [
+      {
+        "title": "声明订阅并发布事件",
+        "lang": "typescript",
+        "code": "import {\n  Args, Int, Mutation, Resolver, Subscription,\n} from '@nestjs/graphql';\nimport { PubSub } from 'graphql-subscriptions';\n\nconst pubSub = new PubSub();\n\n@Resolver(() => Comment)\nexport class CommentsResolver {\n  @Subscription(() => Comment)\n  commentAdded() {\n    return pubSub.asyncIterableIterator('commentAdded');\n  }\n\n  @Mutation(() => Comment)\n  async addComment(@Args('postId', { type: () => Int }) postId: number) {\n    const comment = this.commentsService.addComment(postId);\n    pubSub.publish('commentAdded', { commentAdded: comment });\n    return comment;\n  }\n}"
+      },
+      {
+        "title": "开启并定制 graphql-ws",
+        "lang": "typescript",
+        "code": "import { WebSocketServer } from 'ws';\n\nGraphQLModule.forRoot<ApolloDriverConfig>({\n  driver: ApolloDriver,\n  subscriptions: {\n    'graphql-ws': {\n      path: '/graphql',\n      onConnect: (context) => {\n        const { connectionParams, extra } = context;\n        if (!isValid(connectionParams.authToken)) {\n          throw new Error('Token is not valid');\n        }\n        extra.user = { id: '1' };\n      },\n      server: new WebSocketServer({ noServer: true }),\n    },\n  },\n});"
+      }
+    ],
+    "api": [
+      "@Subscription()",
+      "PubSub",
+      "asyncIterableIterator()",
+      "filter",
+      "resolve",
+      "onConnect",
+      "graphql-ws",
+      "verifyClient"
+    ],
+    "pitfalls": [
+      "默认内存 PubSub 不适合生产，多实例部署需换 Redis 等外部存储。",
+      "订阅负载必须包在触发名对应的顶层字段里，形状不匹配会在事件解析时报错。",
+      "subscriptions-transport-ws 在 v14 被移除，旧客户端需整体迁移到 graphql-ws。"
+    ],
+    "enterprise": "实时通知类需求优先用订阅并配合 Redis PubSub；把 PubSub 注册为全局提供者，鉴权统一放在 onConnect，同时限制连接数与消息大小防止资源耗尽。",
+    "related": [
+      "graphql/quick-start",
+      "graphql/mutations",
+      "graphql/other-features",
+      "security/authentication"
+    ]
+  },
+  {
+    "id": "graphql/scalars",
+    "titleZh": "标量类型",
+    "summary": "标量类型是查询的叶子节点，负责把字段解析成具体数据。本章说明 GraphQL 内置标量、Nest 提供的日期与数字标量映射、如何用 @Scalar() 实现自定义标量、如何导入第三方标量，以及架构优先下生成类型时的 customScalarTypeMapping 配置。",
+    "sections": [
+      {
+        "heading": "内置与默认标量",
+        "text": "GraphQL 内置 Int、Float、String、Boolean、ID；代码优先另有 GraphQLISODateTime 与 GraphQLTimestamp，前者默认表示 Date。dateScalarMode 可切换时间戳形式，number 默认映射 Float，可用 numberScalarMode 设为 Int。"
+      },
+      {
+        "heading": "实现自定义标量",
+        "text": "自定义标量实现 CustomScalar 接口：parseValue 处理客户端输入，serialize 处理返回给客户端的值，parseLiteral 解析查询中的字面量。用 @Scalar('Date') 声明并注册为 provider，之后就能在 @Field() 中直接使用 Date 类型。"
+      },
+      {
+        "heading": "导入与注册第三方标量",
+        "text": "通过 GraphQLModule 的 resolvers 选项注册现成标量，例如 graphql-type-json 的 GraphQLJSON，或用 GraphQLScalarType 自建的标量；注册后即可在 @Field(() => GraphQLJSON) 中使用，graphql-scalars 还提供了一批常用标量。"
+      },
+      {
+        "heading": "生成类型映射",
+        "text": "架构优先生成 TypeScript 定义时，自定义标量默认是 any。可用 customScalarTypeMapping 指定映射类型、additionalHeader 注入 import 语句、defaultScalarType: 'unknown' 提升安全性，避免类型系统被 any 掏空。"
+      }
+    ],
+    "keyPoints": [
+      "内置标量有 ID、Int、Float、String、Boolean，Date 默认是 ISO 时间。",
+      "@Scalar() 实现 CustomScalar 接口即可定义自定义标量。",
+      "自定义标量需注册为 provider，才能在 @Field() 中使用。",
+      "第三方标量通过 resolvers 选项注册，如 { JSON: GraphQLJSON }。",
+      "dateScalarMode、numberScalarMode 控制 Date 与 number 标量。",
+      "customScalarTypeMapping 可指定自定义标量的 TS 映射类型。"
+    ],
+    "snippets": [
+      {
+        "title": "实现 Date 自定义标量",
+        "lang": "typescript",
+        "code": "import { CustomScalar, Scalar } from '@nestjs/graphql';\nimport { Kind, ValueNode } from 'graphql';\n\n@Scalar('Date', () => Date)\nexport class DateScalar implements CustomScalar<number, Date> {\n  description = 'Date custom scalar type';\n\n  parseValue(value: unknown): Date {\n    return new Date(value as number);\n  }\n\n  serialize(value: unknown): number {\n    return (value as Date).getTime();\n  }\n\n  parseLiteral(ast: ValueNode): Date | null {\n    return ast.kind === Kind.INT\n      ? new Date(parseInt(ast.value, 10))\n      : null;\n  }\n}"
+      },
+      {
+        "title": "注册第三方 JSON 标量",
+        "lang": "typescript",
+        "code": "import GraphQLJSON from 'graphql-type-json';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot({\n      typePaths: ['./**/*.graphql'],\n      resolvers: { JSON: GraphQLJSON },\n    }),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "@Scalar()",
+      "CustomScalar",
+      "GraphQLISODateTime",
+      "GraphQLTimestamp",
+      "dateScalarMode",
+      "numberScalarMode",
+      "GraphQLScalarType",
+      "customScalarTypeMapping"
+    ],
+    "pitfalls": [
+      "自定义标量不实现 parseLiteral 就无法处理内联字面量，带字面量参数的查询会报错。",
+      "架构优先生成的自定义标量默认 any，应用 customScalarTypeMapping 提升类型安全。",
+      "number 默认映射 Float，需要整数时必须显式指定 Int 或设置 numberScalarMode。"
+    ],
+    "enterprise": "金额、时间等业务标量建议统一实现并集中注册，配合 customScalarTypeMapping 保证前端类型安全；禁止用 JSON 标量承载核心领域数据。",
+    "related": [
+      "graphql/resolvers",
+      "graphql/generating-sdl",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "graphql/directives",
+    "titleZh": "指令",
+    "summary": "指令附着在字段或片段上，可在执行期改变查询行为。本章讲解 GraphQL 默认指令、如何用 mapSchema 编写自定义指令转换器并挂到 transformSchema，代码优先下用 @Directive() 声明指令、架构优先下直接在 SDL 中书写与声明指令，以及两种模式的差异和注意事项。",
+    "sections": [
+      {
+        "heading": "自定义指令转换器",
+        "text": "指令行为由转换器实现：用 mapSchema 遍历 schema 中的位置，用 getDirective 判断字段是否带指令，命中后包裹原 resolve 函数实现转换，例如把字段返回值转成大写。转换器在 GraphQLModule 的 transformSchema 选项中注册，启动时作用于整个 schema。"
+      },
+      {
+        "heading": "代码优先应用指令",
+        "text": "代码优先用 @Directive('@upper') 标注字段、对象类型、查询或变更处理器。自定义指令还需在 buildSchemaOptions.directives 中声明 GraphQLDirective 与 DirectiveLocation，否则 schema 校验不通过；该装饰器可叠加多个。"
+      },
+      {
+        "heading": "架构优先书写指令",
+        "text": "架构优先直接在 SDL 中用 directive @upper on FIELD_DEFINITION 声明指令，并在字段后追加 @upper，转换器逻辑保持一致，无需额外在 buildSchemaOptions 中声明；指令声明与使用必须出现在被聚合的 SDL 文件中。"
+      }
+    ],
+    "keyPoints": [
+      "默认指令包括 @include(if:)、@skip(if:) 与 @deprecated(reason:)。",
+      "自定义指令用 mapSchema 遍历位置、getDirective 读取声明并替换 resolve 实现。",
+      "转换器通过 GraphQLModule 的 transformSchema 选项注册。",
+      "代码优先用 @Directive() 应用指令，可作用于字段、类型与处理器。",
+      "自定义指令需在 buildSchemaOptions.directives 中声明。",
+      "架构优先在 SDL 中用 directive 关键字声明并直接标注到字段。"
+    ],
+    "snippets": [
+      {
+        "title": "实现 upper 指令转换器",
+        "lang": "typescript",
+        "code": "import { getDirective, MapperKind, mapSchema } from '@graphql-tools/utils';\nimport { defaultFieldResolver, GraphQLSchema } from 'graphql';\n\nexport function upperDirectiveTransformer(\n  schema: GraphQLSchema,\n  directiveName: string,\n) {\n  return mapSchema(schema, {\n    [MapperKind.OBJECT_FIELD]: (fieldConfig) => {\n      const upper = getDirective(schema, fieldConfig, directiveName)?.[0];\n      if (!upper) return;\n      const { resolve = defaultFieldResolver } = fieldConfig;\n      fieldConfig.resolve = async (source, args, context, info) => {\n        const result = await resolve(source, args, context, info);\n        return typeof result === 'string' ? result.toUpperCase() : result;\n      };\n      return fieldConfig;\n    },\n  });\n}"
+      },
+      {
+        "title": "注册并应用 upper 指令",
+        "lang": "typescript",
+        "code": "import { DirectiveLocation, GraphQLDirective } from 'graphql';\n\nGraphQLModule.forRoot({\n  driver: ApolloDriver,\n  transformSchema: (schema) => upperDirectiveTransformer(schema, 'upper'),\n  buildSchemaOptions: {\n    directives: [\n      new GraphQLDirective({\n        name: 'upper',\n        locations: [DirectiveLocation.FIELD_DEFINITION],\n      }),\n    ],\n  },\n});\n\n@Directive('@upper')\n@Field()\ntitle: string;"
+      }
+    ],
+    "api": [
+      "@Directive()",
+      "mapSchema",
+      "getDirective",
+      "transformSchema",
+      "GraphQLDirective",
+      "DirectiveLocation",
+      "@include",
+      "@deprecated"
+    ],
+    "pitfalls": [
+      "通过 @Directive() 装饰器添加的指令不会写入生成的 schema 文件，需在构建选项里显式声明。",
+      "自定义指令必须同时提供转换器与 GraphQLDirective 声明，缺一会导致校验失败或执行无效。",
+      "架构优先下指令声明与 SDL 使用必须一致，否则 schema 校验直接失败。"
+    ],
+    "enterprise": "指令适合承载鉴权、限流、脱敏等横切策略，但应集中实现转换器并在 schema 层统一注册，避免把业务逻辑散落到每个字段。",
+    "related": [
+      "graphql/field-middleware",
+      "graphql/extensions",
+      "graphql/federation"
+    ]
+  }
+]

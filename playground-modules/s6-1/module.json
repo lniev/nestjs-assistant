@@ -1,0 +1,53 @@
+{
+  "id": "s6-1",
+  "itemId": "s6-1",
+  "stageId": "s6",
+  "stageIndex": 6,
+  "itemIndex": 1,
+  "stageTitleZh": "工程化与可交付",
+  "titleZh": "单元测试与测试模块",
+  "title": "单元测试与测试模块",
+  "level": "L3",
+  "goal": "用 @nestjs/testing 的 Test.createTestingModule 写单测，用 mock 隔离数据库与外部服务。",
+  "practice": "在操练场为 CatsService 写单测，用 overrideProvider 替换 Repository。",
+  "deliverable": "核心 service 单测套件与覆盖率报告（≥70%）",
+  "accept": "npm test 全绿，mock 掉数据库后单测在 5 秒内跑完",
+  "minutes": 300,
+  "pageIds": [
+    "fundamentals/testing"
+  ],
+  "summary": "把 @nestjs/testing 的 createTestingModule / overrideProvider / compile / get 用 NestFactory.createApplicationContext 手写等价实现；CatsService 依赖 CATS_REPOSITORY 令牌，单测用 fake 仓储替换真实仓储并断言 404/400。GET /test/run 执行 4 条用例，默认服务照常可运行（/cats 增删查）。",
+  "defaultFile": "src/testing/cats.spec.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/test/run",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/test/wiring",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/cats/1",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/cats",
+      "expect": 400
+    }
+  ]
+}

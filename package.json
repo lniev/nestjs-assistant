@@ -1,0 +1,85 @@
+{
+  "name": "@local/nest-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "NestJS 助手：内置 165 页官方文档中文知识库 + 企业级开发地图 + 学习路线 + 可运行真实 Nest 工程的操练场（31 个练习模块、代码版本保存、虚拟 NestJS 运行时、AI 教练）。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "nestjs",
+    "nest",
+    "playground",
+    "knowledge-base",
+    "ai-coach"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_GITHUB_USER/nest-assistant.git"
+  },
+  "homepage": "https://github.com/YOUR_GITHUB_USER/nest-assistant#readme",
+  "bugs": {
+    "url": "https://github.com/YOUR_GITHUB_USER/nest-assistant/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "dsh": ">=0.2.2-0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "PUBLISHING.md",
+    "MODULES-SPEC.md",
+    "RUNTIME-SPEC.md",
+    "UI-CONTRACT.md",
+    "build.mjs",
+    "src",
+    "host",
+    "knowledge",
+    "playground-modules",
+    "scripts"
+  ],
+  "dependencies": {
+    "@nestjs/common": "^11.2.8",
+    "@nestjs/core": "^11.2.8",
+    "@nestjs/platform-express": "^11.2.8",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "test": "node scripts/smoke.mjs && node host/playground-runtime.test.mjs && node host/playground-projects.test.mjs",
+    "test:modules": "node scripts/verify-modules.mjs",
+    "check:client": "node build.mjs --out /tmp/nest-assistant-client.js && node scripts/smoke.mjs --bundle /tmp/nest-assistant-client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

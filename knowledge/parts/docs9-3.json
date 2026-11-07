@@ -1,0 +1,369 @@
+[
+  {
+    "id": "microservices/interceptors",
+    "titleZh": "拦截器",
+    "summary": "微服务拦截器与普通拦截器机制一致，可在处理器前后包装 RxJS 流，用于统一响应格式、日志、缓存与异常转换。用 @UseInterceptors() 绑定到方法或控制器；hybrid 应用里注册在 HTTP 应用上的全局拦截器默认不作用于微服务，需开启 inheritAppConfig。",
+    "sections": [
+      {
+        "heading": "与 HTTP 拦截器异同",
+        "text": "拦截器同样通过 intercept(context, next) 拿到 ExecutionContext 与 CallHandler，用 RxJS 操作符在流上做前后处理；微服务里 context 是 RPC，可用 switchToRpc() 读取数据与传输器上下文。"
+      },
+      {
+        "heading": "绑定与全局配置",
+        "text": "可方法级 @UseInterceptors(new TransformInterceptor()) 或控制器级；hybrid 应用中，HTTP 应用上注册的全局拦截器要开启 inheritAppConfig 才会作用于连接的微服务。"
+      }
+    ],
+    "keyPoints": [
+      "微服务拦截器与 HTTP 拦截器机制一致，基于 RxJS 流",
+      "intercept() 接收 ExecutionContext 与 CallHandler",
+      "用 @UseInterceptors() 绑定在方法或控制器上",
+      "context.switchToRpc() 可读取消息数据与上下文",
+      "hybrid 应用的全局拦截器需 inheritAppConfig 才会继承",
+      "拦截器内不要手动 subscribe，应返回流让 Nest 处理"
+    ],
+    "snippets": [
+      {
+        "title": "统一包装响应",
+        "lang": "typescript",
+        "code": "import {\n  CallHandler,\n  ExecutionContext,\n  Injectable,\n  NestInterceptor,\n} from '@nestjs/common';\nimport { Observable, map } from 'rxjs';\n\n@Injectable()\nexport class TransformInterceptor implements NestInterceptor {\n  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {\n    return next.handle().pipe(map((data) => ({ success: true, data })));\n  }\n}\n\n@Controller()\nexport class MathController {\n  @UseInterceptors(new TransformInterceptor())\n  @MessagePattern({ cmd: 'sum' })\n  accumulate(data: number[]): number {\n    return (data || []).reduce((a, b) => a + b);\n  }\n}"
+      }
+    ],
+    "api": [
+      "NestInterceptor",
+      "@UseInterceptors()",
+      "ExecutionContext",
+      "CallHandler",
+      "switchToRpc()",
+      "inheritAppConfig",
+      "map"
+    ],
+    "pitfalls": [
+      "以为 HTTP 全局拦截器会作用于 hybrid 应用的微服务，实际需 inheritAppConfig",
+      "拦截器里手动 subscribe 而不返回流，客户端收不到响应",
+      "对事件处理器使用拦截器时不能依赖返回值，它没有响应流"
+    ],
+    "enterprise": "用全局拦截器统一响应包装、耗时统计与错误规范化，避免每个处理器重复写；把拦截器与日志、追踪 SDK 结合输出结构化调用日志。",
+    "related": [
+      "interceptors",
+      "microservices/guards",
+      "microservices/exception-filters",
+      "faq/hybrid-application"
+    ]
+  },
+  {
+    "id": "openapi/introduction",
+    "titleZh": "OpenAPI 简介",
+    "summary": "OpenAPI 是语言无关的 REST API 描述规范，@nestjs/swagger 能从装饰器与类型信息自动生成文档与 Swagger UI。本章覆盖安装、用 DocumentBuilder 构造基础文档、SwaggerModule.createDocument() 与 setup() 挂载 UI 与 JSON/YAML 端点，以及文档选项与 UI 选项的主要开关。",
+    "sections": [
+      {
+        "heading": "初始化与挂载",
+        "text": "装好 @nestjs/swagger 后，在 main.ts 用 DocumentBuilder 设置 title、version 与 tag，再 createDocument(app, config) 生成文档，setup('api', app, documentFactory) 挂载；访问 /api 看界面，/api-json 下载 JSON。"
+      },
+      {
+        "heading": "延迟生成文档",
+        "text": "把 createDocument() 包进工厂函数可推迟到首次请求时才生成，节省启动时间；若改为立即生成，必须先调用 app.enableVersioning()，否则 paths 缺少版本前缀，工厂模式不受影响。"
+      },
+      {
+        "heading": "文档级选项",
+        "text": "SwaggerDocumentOptions 支持 include、extraModels、ignoreGlobalPrefix、deepScanRoutes、operationIdFactory、linkNameFactory、autoTagControllers、exampleMaxDepth、standardSchemaConverter 等。"
+      },
+      {
+        "heading": "UI 与安全策略",
+        "text": "SwaggerCustomOptions 提供 ui、raw、jsonDocumentUrl、yamlDocumentUrl、patchDocumentOnRequest、explorer、swaggerOptions、customCss 等；helmet 的 CSP 可能拦截 UI，需放宽 styleSrc 与 scriptSrc 或关闭 CSP。"
+      }
+    ],
+    "keyPoints": [
+      "安装 @nestjs/swagger，Fastify 项目还需 @fastify/static",
+      "DocumentBuilder 设置标题、描述、版本与 tag",
+      "createDocument() 生成文档，setup() 挂载 UI 与 JSON 端点",
+      "把 createDocument() 包成工厂函数可延迟生成、加快启动",
+      "立即生成文档时需先 enableVersioning()，否则缺版本前缀",
+      "SwaggerDocumentOptions 控制 include、extraModels 等扫描行为",
+      "ui 与 raw 相互独立，可只暴露 JSON 而关闭 UI"
+    ],
+    "snippets": [
+      {
+        "title": "初始化 Swagger",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  const config = new DocumentBuilder()\n    .setTitle('Cats example')\n    .setDescription('The cats API description')\n    .setVersion('1.0')\n    .addTag('cats')\n    .build();\n\n  const documentFactory = () => SwaggerModule.createDocument(app, config);\n  SwaggerModule.setup('api', app, documentFactory);\n\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "自定义文档与 UI 选项",
+        "lang": "typescript",
+        "code": "const options: SwaggerDocumentOptions = {\n  operationIdFactory: (controllerKey: string, methodKey: string) => methodKey,\n};\n\nconst documentFactory = () =>\n  SwaggerModule.createDocument(app, config, options);\n\nSwaggerModule.setup('swagger', app, documentFactory, {\n  ui: true,\n  raw: ['json', 'yaml'],\n  jsonDocumentUrl: 'swagger/json',\n  yamlDocumentUrl: 'swagger/yaml',\n  customSiteTitle: 'Cats API',\n});"
+      }
+    ],
+    "api": [
+      "SwaggerModule",
+      "DocumentBuilder",
+      "createDocument()",
+      "setup()",
+      "SwaggerDocumentOptions",
+      "SwaggerCustomOptions",
+      "operationIdFactory",
+      "jsonDocumentUrl"
+    ],
+    "pitfalls": [
+      "立即调用 createDocument() 前没启用版本控制，路径缺少版本前缀",
+      "Fastify 项目忘记安装 @fastify/static，Swagger UI 静态资源 404",
+      "helmet 默认 CSP 会拦截 Swagger UI，需放宽指令或关闭 CSP"
+    ],
+    "enterprise": "把 Swagger 初始化抽成独立模块函数，按环境决定是否暴露 UI；用 operationIdFactory 生成稳定 operationId，便于客户端 SDK 生成与契约测试。",
+    "related": [
+      "openapi/operations",
+      "openapi/cli-plugin",
+      "security/helmet",
+      "http/versioning"
+    ]
+  },
+  {
+    "id": "openapi/types-and-parameters",
+    "titleZh": "类型与参数",
+    "summary": "SwaggerModule 会扫描 @Body()、@Query()、@Param() 与 @Headers() 并借助反射生成模型定义，但类型元数据有限：属性需 @ApiProperty() 标注或用 CLI 插件自动补全。本章覆盖数组、循环依赖、泛型、枚举与 enumName、示例、原始定义、额外模型，以及 oneOf/anyOf/allOf 组合与 @ApiSchema() 改名。",
+    "sections": [
+      {
+        "heading": "属性标注",
+        "text": "类属性必须用 @ApiProperty() 标注才会进入 schema，可设 description、minimum、default、type 等字段；可选属性用 @ApiPropertyOptional()。数组要显式写 type: [String] 或 isArray: true，循环依赖用惰性函数 type: () => Node。"
+      },
+      {
+        "heading": "泛型、枚举与示例",
+        "text": "TypeScript 不保留泛型与接口元数据，CreateUserDto[] 这类写法要改用 @ApiBody({ type: [CreateUserDto] })。枚举用 enum 属性，配 enumName 生成可复用独立 schema；example 与 examples 设置示例值。"
+      },
+      {
+        "heading": "原始定义与组合",
+        "text": "深层嵌套数组或对象可用 type、items、properties 写原始定义，@ApiBody({ schema }) 也可手动描述输入。组合用 oneOf、anyOf、allOf 配合 getSchemaPath() 引用，多态数组用原始定义加 oneOf items。"
+      },
+      {
+        "heading": "额外模型与命名",
+        "text": "控制器未直接引用的模型用 @ApiExtraModels() 或 createDocument 的 extraModels 注册，再用 getSchemaPath() 取 $ref；@ApiSchema({ name, description }) 可改 schema 名与描述。"
+      }
+    ],
+    "keyPoints": [
+      "属性未标注 @ApiProperty() 时生成的模型定义为空",
+      "数组需 type: [String] 或 isArray: true 声明元素类型",
+      "循环依赖用惰性函数 @ApiProperty({ type: () => Node })",
+      "泛型无运行时元数据，用 @ApiBody({ type: [Dto] })",
+      "enum 加 enumName 生成可复用 schema",
+      "@ApiExtraModels() 注册未直接引用的模型",
+      "@ApiSchema() 修改生成的 schema 名称与描述"
+    ],
+    "snippets": [
+      {
+        "title": "带校验与示例的 DTO",
+        "lang": "typescript",
+        "code": "import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';\n\nexport class CreateCatDto {\n  @ApiProperty({ description: 'The name of a cat', example: 'Tom' })\n  name: string;\n\n  @ApiProperty({ description: 'The age of a cat', minimum: 1, default: 1 })\n  age: number;\n\n  @ApiPropertyOptional({ enum: ['Persian', 'Tabby'], enumName: 'CatBreed' })\n  breed?: string;\n\n  @ApiProperty({ type: [String] })\n  nicknames: string[];\n}"
+      },
+      {
+        "title": "组合 schema 与额外模型",
+        "lang": "typescript",
+        "code": "import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';\n\n@ApiExtraModels(Cat, Dog)\nexport class CreatePetDto {\n  @ApiProperty({\n    oneOf: [{ $ref: getSchemaPath(Cat) }, { $ref: getSchemaPath(Dog) }],\n  })\n  pet: Cat | Dog;\n}\n\n@ApiBody({ type: [CreateUserDto] })\ncreateBulk(@Body() usersDto: CreateUserDto[]) {}"
+      }
+    ],
+    "api": [
+      "@ApiProperty()",
+      "@ApiPropertyOptional()",
+      "@ApiBody()",
+      "@ApiQuery()",
+      "@ApiParam()",
+      "@ApiExtraModels()",
+      "getSchemaPath()",
+      "@ApiSchema()",
+      "enumName",
+      "oneOf"
+    ],
+    "pitfalls": [
+      "只在控制器用 DTO 类型而不标 @ApiProperty()，模型是空对象",
+      "数组属性漏写 type: [X] 或 isArray，schema 退化为无元素类型",
+      "oneOf 引用的模型未注册为 extra model，$ref 指向空 schema"
+    ],
+    "enterprise": "DTO 统一用 @ApiProperty 描述并配合 CLI 插件减少样板；枚举统一加 enumName，跨服务共享 DTO 包保证文档与校验同源。",
+    "related": [
+      "openapi/introduction",
+      "openapi/operations",
+      "openapi/cli-plugin",
+      "openapi/decorators"
+    ]
+  },
+  {
+    "id": "openapi/operations",
+    "titleZh": "操作",
+    "summary": "在 OpenAPI 中 path 是资源端点、operation 是 HTTP 方法。本章介绍用 @ApiTags() 给控制器打标签（含 OpenAPI 3.2 的父子层级）、@ApiHeader() 声明请求头、@ApiResponse() 及各状态码简写描述响应、全局响应、文件上传文档写法、@ApiExtension() 扩展，以及泛型分页响应的 allOf 技巧。",
+    "sections": [
+      {
+        "heading": "标签与请求头",
+        "text": "@ApiTags('cats') 把控制器归入标签；OpenAPI 3.2 下需 setOpenAPIVersion('3.2.0') 并只用 DocumentBuilder.addTag() 的 parent 与 kind 声明层级，@ApiTags() 会忽略这些字段并告警。@ApiHeader() 声明自定义请求头。"
+      },
+      {
+        "heading": "响应描述",
+        "text": "@ApiResponse({ status, description }) 描述单个响应，另有 @ApiOkResponse()、@ApiCreatedResponse() 等每个状态码一个简写；用 @ApiProperty() 标注返回模型后，通过 type 指定即可生成 schema。addGlobalResponse() 定义全局响应。"
+      },
+      {
+        "heading": "上传与扩展",
+        "text": "上传接口用 @ApiConsumes('multipart/form-data') 配合 @ApiBody({ type: FileUploadDto })，DTO 属性写 type: 'string'、format: 'binary'。@ApiExtension('x-foo', value) 的扩展名必须以 x- 开头。"
+      },
+      {
+        "heading": "泛型响应",
+        "text": "对 PaginatedDto<T> 这类泛型，用 @ApiOkResponse 的 schema.allOf 拼接 getSchemaPath(PaginatedDto) 与具体 results 属性；模型需用 @ApiExtraModels() 注册，加 title 可让客户端生成器生成具名类型。"
+      }
+    ],
+    "keyPoints": [
+      "@ApiTags() 给控制器分组，OpenAPI 3.2 层级要用 addTag()",
+      "@ApiHeader() 声明请求头，@ApiResponse() 描述响应",
+      "@ApiOkResponse()、@ApiCreatedResponse() 是状态码简写",
+      "响应装饰器的 type 指定返回模型即可生成 schema",
+      "addGlobalResponse() 定义所有端点共用的响应",
+      "文件上传用 @ApiConsumes 加 @ApiBody 与 binary 属性",
+      "泛型分页响应用 allOf 加 getSchemaPath() 并注册 extra model"
+    ],
+    "snippets": [
+      {
+        "title": "描述标签、响应与上传",
+        "lang": "typescript",
+        "code": "@ApiTags('cats')\n@Controller('cats')\nexport class CatsController {\n  @Post()\n  @ApiConsumes('multipart/form-data')\n  @ApiBody({ description: 'List of cats', type: FileUploadDto })\n  @ApiCreatedResponse({ description: 'Created.', type: Cat })\n  @ApiForbiddenResponse({ description: 'Forbidden.' })\n  async create(\n    @Body() createCatDto: CreateCatDto,\n    @UploadedFile() file: Express.Multer.File,\n  ): Promise<Cat> {\n    return this.catsService.create(createCatDto);\n  }\n}\n\nclass FileUploadDto {\n  @ApiProperty({ type: 'string', format: 'binary' })\n  file: any;\n}"
+      },
+      {
+        "title": "泛型分页响应",
+        "lang": "typescript",
+        "code": "export const ApiPaginatedResponse = <TModel extends Type<any>>(\n  model: TModel,\n) => {\n  return applyDecorators(\n    ApiExtraModels(PaginatedDto, model),\n    ApiOkResponse({\n      schema: {\n        title: `PaginatedResponseOf${model.name}`,\n        allOf: [\n          { $ref: getSchemaPath(PaginatedDto) },\n          {\n            properties: {\n              results: { type: 'array', items: { $ref: getSchemaPath(model) } },\n            },\n          },\n        ],\n      },\n    }),\n  );\n};"
+      }
+    ],
+    "api": [
+      "@ApiTags()",
+      "@ApiHeader()",
+      "@ApiResponse()",
+      "@ApiCreatedResponse()",
+      "@ApiConsumes()",
+      "@ApiBody()",
+      "@ApiExtension()",
+      "addGlobalResponse()",
+      "getSchemaPath()",
+      "applyDecorators()"
+    ],
+    "pitfalls": [
+      "用 @ApiTags() 声明 OpenAPI 3.2 层级无效，必须走 addTag()",
+      "扩展名不以 x- 开头时 @ApiExtension() 会直接抛错",
+      "文件上传漏写 @ApiConsumes，Swagger UI 不出现文件选择框"
+    ],
+    "enterprise": "响应装饰器与返回 DTO 保持一一对应，公共错误用 addGlobalResponse 集中声明；分页等泛型响应封装成装饰器复用，保证客户端 SDK 类型稳定。",
+    "related": [
+      "openapi/types-and-parameters",
+      "openapi/security",
+      "openapi/introduction",
+      "openapi/decorators"
+    ]
+  },
+  {
+    "id": "openapi/security",
+    "titleZh": "安全",
+    "summary": "用 @ApiSecurity()、@ApiBasicAuth()、@ApiBearerAuth()、@ApiOAuth2()、@ApiCookieAuth() 声明操作使用的安全机制，同时必须在基础文档中通过 DocumentBuilder 的 addSecurity()、addBasicAuth()、addBearerAuth()、addOAuth2()、addCookieAuth() 注册对应 securitySchemes，Swagger UI 才会显示 Authorize 按钮。",
+    "sections": [
+      {
+        "heading": "通用安全声明",
+        "text": "@ApiSecurity('basic') 声明某个操作或控制器使用名为 basic 的安全方案；该方案必须先用 DocumentBuilder.addSecurity('basic', { type: 'http', scheme: 'basic' }) 写进基础文档，否则文档里只有引用没有定义。"
+      },
+      {
+        "heading": "内置方案装饰器",
+        "text": "常见方案有内置简写：@ApiBasicAuth() 配 addBasicAuth()、@ApiBearerAuth() 配 addBearerAuth()、@ApiOAuth2(['pets:write']) 配 addOAuth2()、@ApiCookieAuth() 配 addCookieAuth('session-id')。"
+      },
+      {
+        "heading": "应用层级",
+        "text": "这些装饰器都能作用于方法或控制器；写在控制器上表示该控制器下所有操作都要求该认证，写在方法上则只作用于该操作，便于对不同路由声明不同方案。声明必须与基础文档里的方案一一对应，Swagger UI 才能发起带凭证的请求。"
+      }
+    ],
+    "keyPoints": [
+      "@ApiSecurity(name) 引用自定义方案，需先 addSecurity() 定义",
+      "@ApiBasicAuth() 与 @ApiBearerAuth() 是最常用的方案装饰器",
+      "@ApiOAuth2(['scope']) 声明 OAuth2 权限范围",
+      "@ApiCookieAuth() 声明基于 Cookie 的会话认证",
+      "DocumentBuilder 的 addXxxAuth() 必须与装饰器成对使用",
+      "安全类装饰器可作用于方法或控制器级别"
+    ],
+    "snippets": [
+      {
+        "title": "声明 Bearer 认证",
+        "lang": "typescript",
+        "code": "import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';\nimport { ApiBearerAuth, ApiTags } from '@nestjs/swagger';\n\nconst config = new DocumentBuilder()\n  .setTitle('Cats example')\n  .setVersion('1.0')\n  .addBearerAuth()\n  .build();\n\n@ApiBearerAuth()\n@ApiTags('cats')\n@Controller('cats')\nexport class CatsController {}\n\nconst documentFactory = () => SwaggerModule.createDocument(app, config);\nSwaggerModule.setup('api', app, documentFactory);"
+      },
+      {
+        "title": "自定义安全方案",
+        "lang": "typescript",
+        "code": "const options = new DocumentBuilder()\n  .setTitle('Cats example')\n  .setVersion('1.0')\n  .addSecurity('basic', {\n    type: 'http',\n    scheme: 'basic',\n  })\n  .addCookieAuth('optional-session-id')\n  .build();\n\n@ApiSecurity('basic')\n@ApiCookieAuth('optional-session-id')\n@Controller('cats')\nexport class CatsController {}"
+      }
+    ],
+    "api": [
+      "@ApiSecurity()",
+      "@ApiBasicAuth()",
+      "@ApiBearerAuth()",
+      "@ApiOAuth2()",
+      "@ApiCookieAuth()",
+      "addSecurity()",
+      "addBearerAuth()",
+      "addCookieAuth()"
+    ],
+    "pitfalls": [
+      "只加 @ApiBearerAuth() 而文档里没有 addBearerAuth()，UI 无 Authorize",
+      "@ApiSecurity('basic') 的名称必须与 addSecurity() 注册名一致",
+      "OAuth2 未声明 scopes 时生成的客户端请求不带 scope 参数"
+    ],
+    "enterprise": "网关统一使用 JWT 时全站 addBearerAuth() 并在控制器级加 @ApiBearerAuth()；对外开放接口按方案拆分 securitySchemes，避免文档与鉴权策略不一致。",
+    "related": [
+      "openapi/introduction",
+      "openapi/operations",
+      "security/authentication"
+    ]
+  },
+  {
+    "id": "openapi/mapped-types",
+    "titleZh": "映射类型",
+    "summary": "构建 CRUD 时经常需要同一实体的变体类型，@nestjs/swagger 提供 PartialType、PickType、OmitType、IntersectionType 四个映射工具：PartialType 把属性全部变可选、PickType 挑选子集、OmitType 排除指定键、IntersectionType 合并多个类型，且它们可以嵌套组合并保留 Swagger 元数据。",
+    "sections": [
+      {
+        "heading": "Partial 与 Pick",
+        "text": "PartialType(CreateCatDto) 返回所有属性可选的类，用于 Update DTO；PickType(CreateCatDto, ['age'] as const) 只保留指定属性。二者都从 @nestjs/swagger 导入，会保留原属性的 @ApiProperty() 元数据。"
+      },
+      {
+        "heading": "Omit 与合并类型",
+        "text": "OmitType(CreateCatDto, ['name'] as const) 去掉指定键，常用于更新时不允许改主键；IntersectionType(A, B) 把两个类型的属性合并成新类，适合把基础字段与附加信息拼在一起。"
+      },
+      {
+        "heading": "组合与注意",
+        "text": "这些函数可嵌套，例如 PartialType(OmitType(CreateCatDto, ['name'])) 得到去掉 name 且全部可选的类型。要在 CLI 插件下正确生成 schema，必须从 @nestjs/swagger 而不是 @nestjs/mapped-types 导入。"
+      }
+    ],
+    "keyPoints": [
+      "PartialType() 把所有属性设为可选，常用于 Update DTO",
+      "PickType() 只保留指定属性，第二个参数用 as const",
+      "OmitType() 排除指定属性，适合禁止修改的字段",
+      "IntersectionType() 合并多个类型的属性",
+      "映射函数可嵌套组合，如 PartialType(OmitType(...))",
+      "必须从 @nestjs/swagger 导入，CLI 插件才能生成 schema"
+    ],
+    "snippets": [
+      {
+        "title": "派生 CRUD 变体",
+        "lang": "typescript",
+        "code": "import {\n  IntersectionType,\n  OmitType,\n  PartialType,\n  PickType,\n} from '@nestjs/swagger';\n\nexport class CreateCatDto {\n  @ApiProperty()\n  name: string;\n\n  @ApiProperty()\n  age: number;\n\n  @ApiProperty()\n  breed: string;\n}\n\nexport class UpdateCatDto extends PartialType(\n  OmitType(CreateCatDto, ['name'] as const),\n) {}\n\nexport class UpdateCatAgeDto extends PickType(CreateCatDto, ['age'] as const) {}"
+      }
+    ],
+    "api": [
+      "PartialType()",
+      "PickType()",
+      "OmitType()",
+      "IntersectionType()",
+      "@nestjs/swagger",
+      "@nestjs/mapped-types"
+    ],
+    "pitfalls": [
+      "从 @nestjs/mapped-types 导入映射类型，Swagger schema 会丢属性",
+      "PickType/OmitType 的键数组漏写 as const，TypeScript 报错",
+      "映射类型只转换 Swagger 元数据，运行时校验仍需 class-validator"
+    ],
+    "enterprise": "CRUD 模块统一用映射类型派生 Create 与 Update DTO，减少字段重复；把命名规范写进模板，保证文档与校验一致。",
+    "related": [
+      "openapi/types-and-parameters",
+      "openapi/cli-plugin",
+      "graphql/mapped-types",
+      "openapi/decorators"
+    ]
+  }
+]

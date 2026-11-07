@@ -1,0 +1,48 @@
+{
+  "id": "s2-4",
+  "itemId": "s2-4",
+  "stageId": "s2",
+  "stageIndex": 2,
+  "itemIndex": 4,
+  "stageTitleZh": "请求生命周期组件",
+  "titleZh": "异常过滤器与错误契约",
+  "title": "异常过滤器与错误契约",
+  "level": "L2",
+  "goal": "用 @Catch 捕获 HttpException 与未知异常，输出稳定错误码，避免堆栈和 SQL 泄漏给客户端。",
+  "practice": "在操练场故意抛 new Error，对比默认 500 与自定义过滤器的输出。",
+  "deliverable": "全局异常过滤器、错误码表与 404/500 用例",
+  "accept": "未知异常返回 500 且日志保留堆栈，响应不含内部路径",
+  "minutes": 180,
+  "pageIds": [
+    "exception-filters"
+  ],
+  "summary": "全局 @Catch() 异常过滤器 + 业务错误码表：把 404、业务校验 400 与未知异常 500 统一成 { success, code, message, traceId }，未知异常只在服务端日志保留堆栈；含 /missing-order、/boom 与 POST /orders 三条对照路由。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/:id",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/missing-order",
+      "expect": 404
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "expect": 400
+    },
+    {
+      "method": "GET",
+      "path": "/boom",
+      "expect": 500
+    }
+  ]
+}

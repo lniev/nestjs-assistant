@@ -1,0 +1,342 @@
+[
+  {
+    "id": "websockets/gateways",
+    "titleZh": "WebSocket 网关",
+    "summary": "网关（gateway）是用 @WebSocketGateway() 装饰的类，是 Nest 中处理 WebSocket 消息的入口。它平台无关，默认基于 socket.io，也可切换 ws 适配器；默认与 HTTP 服务同端口，可通过参数指定端口、命名空间与服务器选项。网关通过 @SubscribeMessage() 订阅事件，支持生命周期钩子、WsResponse 多响应、Observable 异步流以及 v12 起按连接生效的请求作用域。",
+    "sections": [
+      {
+        "heading": "网关的定义与注册",
+        "text": "网关是加了 @WebSocketGateway() 装饰器的类，本质是提供者，可从构造函数注入依赖，也能被控制器等注入。创建后必须加入某个模块的 providers 数组，否则不会被实例化；装饰器第一个参数是端口，第二个参数可传命名空间与服务器选项。"
+      },
+      {
+        "heading": "消息处理器",
+        "text": "用 @SubscribeMessage('events') 声明处理器，@MessageBody() 取出消息负载并可指定属性名，@ConnectedSocket() 注入平台 socket 实例。处理器可直接返回值作为确认；用 @Ack() 注入确认回调时 Nest 不再自动确认，需要开发者自己调用 ack()。"
+      },
+      {
+        "heading": "多响应与异步流",
+        "text": "确认只发送一次，原生 WebSocket 也不支持确认。需要多次响应时返回 WsResponse，包含 event 与 data；处理器也可以是 async 方法，或返回 Observable，此时每个发出的值都会作为一次响应推送给客户端，直到流结束。"
+      },
+      {
+        "heading": "生命周期钩子",
+        "text": "网关支持三个钩子：OnGatewayInit 的 afterInit() 接收平台服务器实例；OnGatewayConnection 的 handleConnection() 与 OnGatewayDisconnect 的 handleDisconnect() 接收客户端 socket。它们都在 @nestjs/websockets 中，适合维护连接状态。"
+      }
+    ],
+    "keyPoints": [
+      "网关是 @WebSocketGateway() 装饰的提供者，注册到模块 providers 才会实例化",
+      "装饰器第一个参数是端口，第二个参数可传命名空间与 socket.io 选项",
+      "@Ack() 与 @MessageBody() 从 @nestjs/websockets 导入",
+      "返回 WsResponse 可发多条响应；返回 Observable 时每个值都会推送",
+      "连接与断开实现 OnGatewayConnection、OnGatewayDisconnect 钩子",
+      "@WebSocketServer() 注入服务器实例，设置 namespace 时注入 Namespace",
+      "v12 起网关支持请求作用域，用 REQUEST token 注入连接 socket"
+    ],
+    "snippets": [
+      {
+        "title": "定义带命名空间的消息网关",
+        "lang": "typescript",
+        "code": "import {\n  WebSocketGateway,\n  SubscribeMessage,\n  MessageBody,\n  ConnectedSocket,\n  WebSocketServer,\n} from '@nestjs/websockets';\nimport { Server, Socket } from 'socket.io';\n\n@WebSocketGateway(80, { namespace: 'events' })\nexport class EventsGateway {\n  @WebSocketServer()\n  server: Server;\n\n  @SubscribeMessage('events')\n  handleEvent(\n    @MessageBody() data: string,\n    @ConnectedSocket() client: Socket,\n  ): string {\n    return data;\n  }\n}"
+      },
+      {
+        "title": "用 Observable 发送多次响应",
+        "lang": "typescript",
+        "code": "import { MessageBody, SubscribeMessage, WsResponse } from '@nestjs/websockets';\nimport { Observable, from } from 'rxjs';\nimport { map } from 'rxjs/operators';\n\n@SubscribeMessage('events')\nonEvent(@MessageBody() data: unknown): Observable<WsResponse<number>> {\n  const event = 'events';\n  const response = [1, 2, 3];\n\n  return from(response).pipe(\n    map((value) => ({ event, data: value })),\n  );\n}"
+      }
+    ],
+    "api": [
+      "@WebSocketGateway()",
+      "@SubscribeMessage()",
+      "@MessageBody()",
+      "@ConnectedSocket()",
+      "@WebSocketServer()",
+      "@Ack()",
+      "WsResponse",
+      "OnGatewayInit",
+      "OnGatewayConnection",
+      "OnGatewayDisconnect"
+    ],
+    "pitfalls": [
+      "在处理器里直接调用 client.emit() 发送的消息会绕过拦截器",
+      "异步 handleConnection() 不阻塞消息处理，按消息鉴权请用守卫",
+      "只用 socket 参数的单测必须 mock socket，推荐用 @MessageBody() 取参"
+    ],
+    "enterprise": "推送、聊天、协作等长连接场景优先选 socket.io 网关并按业务拆分命名空间；把鉴权放守卫、限流和日志放拦截器，网关类只保留消息编排，避免堆积业务逻辑。",
+    "related": [
+      "websockets/adapter",
+      "websockets/guards",
+      "websockets/exception-filters",
+      "fundamentals/injection-scopes"
+    ]
+  },
+  {
+    "id": "websockets/exception-filters",
+    "titleZh": "WebSocket 异常过滤器",
+    "summary": "WebSocket 异常层与 HTTP 异常过滤器基本一致，区别是抛出 WsException 而不是 HttpException。异常被捕获后，Nest 向客户端发送 exception 消息，携带 status、message 以及包含 pattern 和 data 的 cause，让客户端把错误关联到触发它的消息。可用 @UseFilters() 在方法或网关级别绑定过滤器，或继承 BaseWsExceptionFilter 复用核心处理；全局异常过滤器对网关不生效。",
+    "sections": [
+      {
+        "heading": "异常与错误结构",
+        "text": "处理器抛出 new WsException('Invalid credentials.') 后，Nest 捕获并发出 exception 消息，结构含 status、message 与 cause；cause 中是 pattern 和 data，方便客户端定位出错的消息。向构造函数传对象时该对象会原样下发。"
+      },
+      {
+        "heading": "绑定异常过滤器",
+        "text": "WebSocket 过滤器用法与 HTTP 相同：用 @UseFilters() 装饰方法绑定方法级过滤器，或装饰网关类绑定网关级过滤器。可以手动 new 过滤器实例，也可交给 Nest 托管。app.useGlobalFilters() 或 APP_FILTER 注册的全局过滤器不作用于网关。"
+      },
+      {
+        "heading": "继承核心过滤器",
+        "text": "需要定制时继承 BaseWsExceptionFilter 并调用继承来的 catch()，把处理委托给基础实现，再补充业务逻辑。BaseWsExceptionFilter 构造函数接受选项对象，includeCause 设为 false 可省略 cause，causeFactory(pattern, data) 可自定义 cause。"
+      },
+      {
+        "heading": "其它异常的处理",
+        "text": "不是 WsException 的异常也会产生同样的错误结构，但 message 固定为 'Internal server error'。使用 ws 适配器时没有命名事件，客户端收到的是含 event 与 data 字段的 JSON 字符串，需要自行解析而不是监听 exception 事件。"
+      }
+    ],
+    "keyPoints": [
+      "@nestjs/websockets 的 WsException 替代 HttpException 报告错误",
+      "处理器抛错后 Nest 发送 exception 消息，cause 含 pattern 与 data",
+      "非 WsException 的异常消息固定为 'Internal server error'",
+      "@UseFilters() 可在方法和网关级别绑定过滤器，全局过滤器不生效",
+      "继承 BaseWsExceptionFilter 并调用 super.catch() 可复用核心处理",
+      "BaseWsExceptionFilter 支持 includeCause 与 causeFactory"
+    ],
+    "snippets": [
+      {
+        "title": "继承核心过滤器并绑定到处理器",
+        "lang": "typescript",
+        "code": "import { ArgumentsHost, Catch, UseFilters } from '@nestjs/common';\nimport {\n  BaseWsExceptionFilter,\n  MessageBody,\n  SubscribeMessage,\n  WsException,\n} from '@nestjs/websockets';\n\n@Catch()\nexport class AllExceptionsFilter extends BaseWsExceptionFilter {\n  catch(exception: unknown, host: ArgumentsHost) {\n    // 在这里补充日志、脱敏等业务逻辑\n    super.catch(exception, host);\n  }\n}\n\n@UseFilters(new AllExceptionsFilter())\n@SubscribeMessage('events')\nonEvent(@MessageBody() data: unknown) {\n  if (!data) {\n    throw new WsException('Invalid credentials.');\n  }\n  return { event: 'events', data };\n}"
+      }
+    ],
+    "api": [
+      "WsException",
+      "BaseWsExceptionFilter",
+      "@Catch()",
+      "@UseFilters()",
+      "ArgumentsHost",
+      "includeCause",
+      "causeFactory"
+    ],
+    "pitfalls": [
+      "app.useGlobalFilters() 与 APP_FILTER 注册的过滤器不作用于网关",
+      "ws 适配器没有命名事件，客户端收到的是 JSON 字符串",
+      "WsException 传对象时原样下发，传字符串才套用默认结构"
+    ],
+    "enterprise": "统一为 WebSocket 定义业务异常与错误码映射，用一个基准 WsExceptionFilter 处理日志与脱敏；不要依赖全局过滤器，把过滤器绑定到网关基类或公共方法上复用。",
+    "related": [
+      "websockets/gateways",
+      "exception-filters",
+      "websockets/pipes"
+    ]
+  },
+  {
+    "id": "websockets/pipes",
+    "titleZh": "WebSocket 管道",
+    "summary": "WebSocket 管道与普通管道没有本质区别，区别是应抛出 WsException 而不是 HttpException：只有 WsException 的消息会原样到达客户端，其它异常（包括内置校验管道默认抛出的 BadRequestException）都会显示为 'Internal server error'。管道可用 @UsePipes() 绑定在方法或网关上，全局管道同样生效；@MessageBody() 还支持基于 Standard Schema 的校验。",
+    "sections": [
+      {
+        "heading": "管道与异常类型",
+        "text": "WebSocket 管道与 HTTP 管道用法一致，区别只在异常类型：抛 WsException 时客户端能收到具体消息，抛其它异常时统一变成 'Internal server error'。因此给 ValidationPipe 配置 exceptionFactory 返回 WsException 是常见做法。"
+      },
+      {
+        "heading": "绑定与作用范围",
+        "text": "用 @UsePipes() 装饰方法即方法级管道，装饰网关类即网关级管道；app.useGlobalPipes() 或 APP_PIPE 注册的全局管道也作用于网关。方法、网关、全局管道会对每个参数执行，只校验消息负载时应在参数上绑定，如 @MessageBody(new ParseIntPipe())。"
+      },
+      {
+        "heading": "基于 schema 校验",
+        "text": "@MessageBody() 接受带 schema 属性的选项对象，schema 可来自 Zod、Valibot、ArkType 等 Standard Schema 兼容库。内置 StandardSchemaValidationPipe 会按 schema 校验负载，没有 schema 的参数原样通过；先传属性名可只校验单个字段。"
+      }
+    ],
+    "keyPoints": [
+      "WebSocket 管道应抛 WsException，其它异常显示 Internal server error",
+      "@UsePipes() 支持方法级与网关级绑定，全局管道对网关同样生效",
+      "ValidationPipe 要用 exceptionFactory 返回 WsException",
+      "方法、网关与全局管道作用于每个参数，只校验负载时用参数级绑定",
+      "schema 选项配合 StandardSchema 校验管道完成校验",
+      "schema 可来自 Zod、Valibot、ArkType 等 Standard Schema 兼容库"
+    ],
+    "snippets": [
+      {
+        "title": "用 WsException 包装校验错误",
+        "lang": "typescript",
+        "code": "import { UsePipes, ValidationPipe } from '@nestjs/common';\nimport {\n  MessageBody,\n  SubscribeMessage,\n  WsException,\n} from '@nestjs/websockets';\n\n@UsePipes(\n  new ValidationPipe({\n    exceptionFactory: (errors) => new WsException(errors),\n  }),\n)\n@SubscribeMessage('events')\nhandleEvent(@MessageBody() data: unknown) {\n  return { event: 'events', data };\n}"
+      }
+    ],
+    "api": [
+      "WsException",
+      "@UsePipes()",
+      "ValidationPipe",
+      "StandardSchemaValidationPipe",
+      "@MessageBody()",
+      "exceptionFactory",
+      "schema"
+    ],
+    "pitfalls": [
+      "ValidationPipe 默认抛 BadRequestException，客户端只看到通用错误",
+      "全局管道作用于所有参数，可能误把 socket 等参数当负载校验",
+      "只写 schema 而未绑定 StandardSchemaValidationPipe 时不会校验"
+    ],
+    "enterprise": "为 WebSocket 入站消息统一使用 schema 校验管道，并在异常工厂里产出 WsException，让客户端得到可读错误；DTO 校验规则与 HTTP 接口共用，减少重复定义。",
+    "related": [
+      "websockets/gateways",
+      "pipes",
+      "application/validation"
+    ]
+  },
+  {
+    "id": "websockets/guards",
+    "titleZh": "WebSocket 守卫",
+    "summary": "WebSocket 守卫与 HTTP 守卫没有本质区别，区别是应抛出 WsException 而不是 HttpException。守卫返回 false 时，Nest 会抛出消息为 'Forbidden resource' 的 WsException。守卫可用 @UseGuards() 绑定在方法或网关级别，app.useGlobalGuards() 或 APP_GUARD 注册的全局守卫同样对网关生效；消息级鉴权应依赖守卫而不是等待 handleConnection。",
+    "sections": [
+      {
+        "heading": "守卫与异常",
+        "text": "守卫职责与 HTTP 一致：判断当前消息是否允许处理。鉴权失败时用 WsException 抛出带业务信息的异常，或直接返回 false 让 Nest 抛出 'Forbidden resource'。WsException 从 @nestjs/websockets 导入，只有它的消息能原样到达客户端。"
+      },
+      {
+        "heading": "绑定守卫",
+        "text": "用 @UseGuards(AuthGuard) 装饰处理方法即方法级守卫，装饰网关类则绑定网关级守卫；app.useGlobalGuards() 与 APP_GUARD 注册的全局守卫也会对网关消息生效。守卫在消息处理器之前执行，是连接后逐条消息鉴权的可靠位置。"
+      }
+    ],
+    "keyPoints": [
+      "守卫失败应抛 @nestjs/websockets 的 WsException",
+      "守卫返回 false 会得到 WsException('Forbidden resource')",
+      "@UseGuards() 可绑定方法级守卫，也可装饰网关类",
+      "app.useGlobalGuards() 与 APP_GUARD 注册的全局守卫对网关生效",
+      "逐条消息鉴权应依赖守卫，而不是等待 handleConnection 完成"
+    ],
+    "snippets": [
+      {
+        "title": "为消息处理器绑定守卫",
+        "lang": "typescript",
+        "code": "import {\n  CanActivate,\n  ExecutionContext,\n  Injectable,\n  UseGuards,\n} from '@nestjs/common';\nimport {\n  MessageBody,\n  SubscribeMessage,\n  WsException,\n} from '@nestjs/websockets';\n\n@Injectable()\nexport class AuthGuard implements CanActivate {\n  canActivate(context: ExecutionContext): boolean {\n    const client = context.switchToWs().getClient();\n    if (!client.handshake?.auth?.token) {\n      throw new WsException('Unauthorized');\n    }\n    return true;\n  }\n}\n\n@UseGuards(AuthGuard)\n@SubscribeMessage('events')\nhandleEvent(@MessageBody() data: unknown) {\n  return { event: 'events', data };\n}"
+      }
+    ],
+    "api": [
+      "WsException",
+      "@UseGuards()",
+      "CanActivate",
+      "APP_GUARD",
+      "@SubscribeMessage()"
+    ],
+    "pitfalls": [
+      "把鉴权放在 handleConnection 中不可靠，异步钩子不阻塞后续消息",
+      "守卫里抛 HttpException 不会以业务消息到达客户端，应抛 WsException",
+      "网关没注册到模块 providers 时不会实例化，守卫也不会运行"
+    ],
+    "enterprise": "WebSocket 的鉴权应逐条消息在守卫中完成，并复用 HTTP 的 JWT 与角色守卫；把守卫绑定到公共网关基类或全局守卫上，避免每个处理器重复声明。",
+    "related": [
+      "websockets/gateways",
+      "guards",
+      "websockets/pipes"
+    ]
+  },
+  {
+    "id": "websockets/interceptors",
+    "titleZh": "WebSocket 拦截器",
+    "summary": "WebSocket 拦截器与普通拦截器没有区别，可以直接复用。用 @UseInterceptors() 绑定方法级或网关级拦截器，app.useGlobalInterceptors() 与 APP_INTERCEPTOR 注册的全局拦截器同样对网关生效。拦截器能看到处理器的返回值，可在其转成响应前计时、记录或改造；注意通过 socket 直接 emit 的消息会绕过拦截器。",
+    "sections": [
+      {
+        "heading": "与 HTTP 拦截器一致",
+        "text": "拦截器的职责不变：在处理器前后执行副作用，可包装返回的 Observable 以记录耗时、转换结果或做缓存。WebSocket 场景下它看到的是处理器的返回值或返回的流，而不是原始网络消息，因此日志与指标要基于返回值采集。"
+      },
+      {
+        "heading": "绑定方式",
+        "text": "用 @UseInterceptors(new TransformInterceptor()) 装饰方法即方法级绑定，装饰网关类即网关级绑定。全局拦截器用 app.useGlobalInterceptors() 或 APP_INTERCEPTOR 注册，同样会作用到网关的消息处理器上。"
+      },
+      {
+        "heading": "绕过拦截器的场景",
+        "text": "拦截器只能观察处理器的返回值。若在处理函数里通过 @ConnectedSocket() 注入的 socket 主动发消息，那些消息不经过拦截器；需要统一处理响应时应返回 WsResponse，而不是手动调用 socket.emit()。"
+      }
+    ],
+    "keyPoints": [
+      "WebSocket 拦截器与普通拦截器行为一致，可直接复用",
+      "@UseInterceptors() 支持方法级与网关级拦截器绑定",
+      "app.useGlobalInterceptors() 与 APP_INTERCEPTOR 对网关生效",
+      "拦截器在返回值转成响应前执行计时、日志或结果转换",
+      "通过 socket 直接 emit 的消息绕过拦截器，只拦截处理器返回值"
+    ],
+    "snippets": [
+      {
+        "title": "包装返回值并绑定到处理器",
+        "lang": "typescript",
+        "code": "import {\n  CallHandler,\n  ExecutionContext,\n  Injectable,\n  NestInterceptor,\n  UseInterceptors,\n} from '@nestjs/common';\nimport { MessageBody, SubscribeMessage } from '@nestjs/websockets';\nimport { map, Observable } from 'rxjs';\n\n@Injectable()\nexport class TransformInterceptor implements NestInterceptor {\n  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {\n    return next.handle().pipe(map((data) => ({ event: 'events', data })));\n  }\n}\n\n@UseInterceptors(new TransformInterceptor())\n@SubscribeMessage('events')\nhandleEvent(@MessageBody() data: unknown) {\n  return data;\n}"
+      }
+    ],
+    "api": [
+      "@UseInterceptors()",
+      "APP_INTERCEPTOR",
+      "NestInterceptor",
+      "WsResponse",
+      "@SubscribeMessage()"
+    ],
+    "pitfalls": [
+      "手动 client.emit() 的响应不经过拦截器，统一格式应返回 WsResponse",
+      "全局拦截器同时作用于 HTTP 与 WebSocket，HTTP 逻辑应先判断上下文"
+    ],
+    "enterprise": "用全局拦截器统一做 WebSocket 调用的日志、耗时与指标上报，并在拦截器里判断执行上下文类型，避免 HTTP 专用逻辑影响网关行为。",
+    "related": [
+      "websockets/gateways",
+      "interceptors",
+      "websockets/guards"
+    ]
+  },
+  {
+    "id": "websockets/adapter",
+    "titleZh": "WebSocket 适配器",
+    "summary": "WebSocket 模块平台无关，只要实现 WebSocketAdapter 接口就能接入任意 WebSocket 库。Nest 内置封装 socket.io 的 IoAdapter 与封装 ws 的 WsAdapter。可继承 IoAdapter 用 Redis 在负载均衡的多实例间广播事件，也可在 main.ts 用 app.useWebSocketAdapter() 切换适配器；WsAdapter 更快、更贴近浏览器原生 WebSocket，但功能更少且不支持命名空间。",
+    "sections": [
+      {
+        "heading": "适配器接口",
+        "text": "WebSocketAdapter 接口要求实现 create() 创建服务器、bindClientConnect() 绑定连接事件、bindClientDisconnect() 绑定断开事件（可选）、bindMessageHandlers() 分发消息，以及 close() 关闭服务器。任何满足该接口的库或原生实现都可以接入。"
+      },
+      {
+        "heading": "扩展 IoAdapter",
+        "text": "socket.io 由 IoAdapter 封装，继承它并重写 createIOServer() 就能增强能力。要在多个负载均衡实例间广播，可用 @socket.io/redis-adapter 创建 Redis 适配器，并在 createIOServer() 返回前调用 server.adapter(adapterConstructor)。"
+      },
+      {
+        "heading": "使用 ws 适配器",
+        "text": "WsAdapter 充当框架与 ws 库之间的代理，完全兼容浏览器原生 WebSocket，比 socket.io 更快但功能更少，不支持命名空间，设置 namespace 会报错。它默认处理 event/data 格式的消息，可用 messageParser 或 setMessageParser() 转换其它格式。"
+      }
+    ],
+    "keyPoints": [
+      "实现 WebSocketAdapter 接口即可接入任意 WebSocket 库",
+      "适配器需实现 create、bindMessageHandlers、close 等方法",
+      "socket.io 由 IoAdapter 封装，重写 createIOServer() 即可扩展",
+      "多实例广播用 @socket.io/redis-adapter，并禁用 polling 或粘性会话",
+      "用 app.useWebSocketAdapter() 在启动时切换 WebSocket 适配器",
+      "WsAdapter 来自 @nestjs/platform-ws，性能更好但不支持命名空间",
+      "WsAdapter 默认处理 event/data，可用 messageParser 定制解析"
+    ],
+    "snippets": [
+      {
+        "title": "Redis 多实例广播适配器",
+        "lang": "typescript",
+        "code": "import { IoAdapter } from '@nestjs/platform-socket.io';\nimport { createAdapter } from '@socket.io/redis-adapter';\nimport { createClient } from 'redis';\n\nexport class RedisIoAdapter extends IoAdapter {\n  private adapterConstructor: ReturnType<typeof createAdapter>;\n\n  async connectToRedis(): Promise<void> {\n    const pubClient = createClient({ url: 'redis://localhost:6379' });\n    const subClient = pubClient.duplicate();\n    await Promise.all([pubClient.connect(), subClient.connect()]);\n    this.adapterConstructor = createAdapter(pubClient, subClient);\n  }\n\n  createIOServer(port: number, options?: any): any {\n    const server = super.createIOServer(port, options);\n    server.adapter(this.adapterConstructor);\n    return server;\n  }\n}"
+      },
+      {
+        "title": "在入口切换适配器",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { WsAdapter } from '@nestjs/platform-ws';\nimport { AppModule } from './app.module';\n\nconst app = await NestFactory.create(AppModule);\n\n// socket.io + Redis 广播\nconst adapter = new RedisIoAdapter(app);\nawait adapter.connectToRedis();\napp.useWebSocketAdapter(adapter);\n\n// 或切换到 ws 适配器\napp.useWebSocketAdapter(new WsAdapter(app));\nawait app.listen(3000);"
+      }
+    ],
+    "api": [
+      "WebSocketAdapter",
+      "IoAdapter",
+      "WsAdapter",
+      "useWebSocketAdapter()",
+      "createIOServer()",
+      "bindMessageHandlers()",
+      "messageParser",
+      "setMessageParser()",
+      "@nestjs/platform-ws",
+      "INestApplicationContext"
+    ],
+    "pitfalls": [
+      "socket.io 多实例只加 Redis 不够，还需禁用 polling 或粘性会话",
+      "WsAdapter 设置 namespace 会抛错，应改为在不同 path 挂载多个服务",
+      "自定义适配器要自行解析消息并序列化响应，否则客户端收不到"
+    ],
+    "enterprise": "有多实例广播需求时提前采用 Redis 适配器并配置粘性会话；纯推送、追求性能可评估 WsAdapter，但要接受没有命名空间与房间等 socket.io 能力。",
+    "related": [
+      "websockets/gateways",
+      "fundamentals/platform-agnosticism",
+      "websockets/exception-filters"
+    ]
+  }
+]

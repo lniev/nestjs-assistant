@@ -1,0 +1,307 @@
+[
+  {
+    "id": "cli/overview",
+    "titleZh": "CLI 概览",
+    "summary": "Nest CLI（@nestjs/cli）是初始化、开发与维护 Nest 应用的命令行工具，提供 nest new、generate、build、start、add、upgrade、deploy、info 等命令与统一语法。文档说明全局或 npx 的安装方式、标准模式与 monorepo 模式的项目结构差异，以及 Node.js 版本和 ICU 国际化支持等运行要求。",
+    "sections": [
+      {
+        "heading": "安装与基本流程",
+        "text": "npm install -g @nestjs/cli 安装，或 npx @nestjs/cli@latest 免安装；nest --help 看命令，nest generate --help 看命令帮助。nest new 创建项目并选择模块系统：ESM 用 Vitest，CommonJS 用 Jest，npm run start:dev 启动并自动重编译。"
+      },
+      {
+        "heading": "两种项目结构",
+        "text": "nest new 生成标准模式结构；添加应用或库后转为 monorepo 模式。两者只在构建方式与内置库支持上不同，其他功能与文档内容一致，可随时切换。标准模式各项目有独立 node_modules 与配置，monorepo 共享依赖与配置，默认编译器为 rspack。"
+      },
+      {
+        "heading": "命令语法与命令总览",
+        "text": "所有命令遵循 nest commandOrAlias requiredArg [optionalArg] [options]，命令与选项都有别名，如 new 的别名 n、--dry-run 的短形式 -d。常用命令有 new、generate、build、start、add、upgrade、deploy、info，任意命令加 --help 可查看详细选项。"
+      },
+      {
+        "heading": "环境要求",
+        "text": "CLI 二进制要求 Node.js v20.11+，但 nest new、generate、upgrade 用的 @nestjs/schematics 要求 Node.js v22.22.3+、v24.15+ 或 v26+。Node 构建还需带 ICU 支持，可用 node -p process.versions.icu 检查。"
+      }
+    ],
+    "keyPoints": [
+      "npm install -g @nestjs/cli 全局安装，或用 npx 免安装",
+      "nest new 创建项目，可选 ESM（Vitest）或 CommonJS（Jest）模板",
+      "标准模式适合单应用，monorepo 模式共享依赖并内置库支持",
+      "命令语法：nest commandOrAlias requiredArg [options]",
+      "命令与选项都有别名，如 new 是 n、--dry-run 是 -d",
+      "常用命令：new、generate、build、start、add、upgrade、deploy、info",
+      "schematics 要求 Node.js v22.22.3+，且 Node 需带 ICU 支持"
+    ],
+    "snippets": [
+      {
+        "title": "安装 CLI 并创建项目",
+        "lang": "bash",
+        "code": "# 全局安装 Nest CLI\n$ npm install -g @nestjs/cli\n\n# 或不安装，直接用 npx 运行\n$ npx @nestjs/cli@latest new my-nest-project\n\n$ cd my-nest-project\n$ npm run start:dev\n\n# 查看命令与单个命令的帮助\n$ nest --help\n$ nest generate --help\n\n# 构建与启动\n$ npm run build\n$ npm run start"
+      }
+    ],
+    "api": [
+      "@nestjs/cli",
+      "nest new",
+      "nest generate",
+      "nest build",
+      "nest start",
+      "nest info"
+    ],
+    "pitfalls": [
+      "全局安装的 CLI 不受 package.json 管理，团队应改用本地 devDependency",
+      "schematics 对 Node 版本要求高于 CLI 本体，CI 上要单独确认",
+      "非交互环境要显式传项目名与 --package-manager，否则会卡在提示"
+    ],
+    "enterprise": "团队把 @nestjs/cli 放进 devDependencies，用 npm scripts 统一 build 与 start；CI 调用本地 CLI，锁定 Node 版本并在流水线检查 ICU 支持，避免全局安装带来的版本漂移。",
+    "related": [
+      "cli/usages",
+      "cli/monorepo",
+      "cli/scripts"
+    ]
+  },
+  {
+    "id": "cli/monorepo",
+    "titleZh": "工作区",
+    "summary": "介绍 Nest 的两种代码组织模式：标准模式适合单一项目，monorepo 模式把代码视为轻量 monorepo，并用 nest-cli.json 中的 workspace 协调多项目关系。执行 nest generate app 或 library 会把标准模式转为 monorepo，文档说明目录结构、默认项目、CLI 全局与项目属性、编译器选项、generate 选项和 assets 分发。",
+    "sections": [
+      {
+        "heading": "两种模式与转换",
+        "text": "nest new 生成标准模式；运行 nest generate app 会把项目移动到 apps/ 下并添加 tsconfig.app.json，从而转为 monorepo，原项目成为默认项目。转换只适用于符合 Nest 规范结构的项目，即根下含 src 与 test，否则转换失败或结果不可靠。"
+      },
+      {
+        "heading": "工作区项目类型",
+        "text": "工作区由项目组成，项目分应用与库两类：应用包含 main.ts，可运行和部署；库是可复用组件包，不能独立运行且没有 main.ts。每个工作区有默认项目，由 nest-cli.json 顶层 root 指定；nest build 和 nest start 不带项目名时即作用于默认项目。"
+      },
+      {
+        "heading": "配置文件结构",
+        "text": "文件分全局段与 projects 段。全局属性有 collection、sourceRoot、compilerOptions 与 generateOptions，monorepo 下还有 monorepo 和 root。compilerOptions 支持 builder、deleteOutDir、assets 等，项目级不与顶层合并。"
+      },
+      {
+        "heading": "生成选项与资源",
+        "text": "generateOptions 控制 spec 与 flat 默认值，可按 schematic 名称设置，优先级为命令行高于项目级、项目级高于全局。assets 用字符串或含 include、exclude、outDir、watchAssets 的对象，把 src 下非 TS 文件复制到输出目录，顶层 watchAssets 会覆盖 assets 内设置。"
+      }
+    ],
+    "keyPoints": [
+      "nest generate app 把标准模式转为 monorepo，项目移到 apps/ 下",
+      "项目分 application（含 main.ts）与 library（不能独立运行）",
+      "默认项目由 nest-cli.json 顶层 root 指定，命令不带名字时使用",
+      "compilerOptions 支持 builder、deleteOutDir 与 assets",
+      "项目级 compilerOptions 不与顶层合并，assets 数组会被整体替换",
+      "generateOptions 控制 spec 与 flat，命令行 > 项目级 > 全局",
+      "assets 只复制 src 下文件，可用 include、exclude、outDir"
+    ],
+    "snippets": [
+      {
+        "title": "monorepo 配置示例",
+        "lang": "json",
+        "code": "{\n  \"$schema\": \"https://json.schemastore.org/nest-cli\",\n  \"collection\": \"@nestjs/schematics\",\n  \"sourceRoot\": \"apps/my-project/src\",\n  \"compilerOptions\": {\n    \"deleteOutDir\": true,\n    \"builder\": \"rspack\",\n    \"tsConfigPath\": \"apps/my-project/tsconfig.app.json\"\n  },\n  \"monorepo\": true,\n  \"root\": \"apps/my-project\",\n  \"projects\": {\n    \"my-app\": {\n      \"type\": \"application\",\n      \"root\": \"apps/my-app\",\n      \"entryFile\": \"main\",\n      \"sourceRoot\": \"apps/my-app/src\",\n      \"compilerOptions\": {\n        \"tsConfigPath\": \"apps/my-app/tsconfig.app.json\"\n      }\n    }\n  }\n}"
+      },
+      {
+        "title": "创建应用与库",
+        "lang": "bash",
+        "code": "# 从标准模式项目创建 monorepo\n$ nest new my-project\n$ cd my-project\n$ nest generate app my-app\n\n# 创建可复用的库\n$ nest generate library my-library\n\n# 构建或启动默认项目、指定项目\n$ nest build\n$ nest start my-app\n\n# 查看生成命令的选项\n$ nest generate --help"
+      }
+    ],
+    "api": [
+      "nest generate app",
+      "nest generate library",
+      "nest-cli.json",
+      "compilerOptions",
+      "generateOptions",
+      "assets",
+      "builder"
+    ],
+    "pitfalls": [
+      "项目级 compilerOptions 不合并，assets 等数组会被整层配置覆盖",
+      "转换 monorepo 要求项目符合规范结构，自定义目录布局会失败",
+      "顶层 watchAssets 会覆盖 assets 数组内单独的 watchAssets 设置"
+    ],
+    "enterprise": "用 monorepo 组织后台应用与共享库，应用放 apps/、通用能力放 libs/；顶层只保留共享编译与 lint 配置，项目级用 tsconfig.app.json 覆盖，assets 显式声明避免漏打包。",
+    "related": [
+      "cli/libraries",
+      "cli/overview",
+      "cli/usages"
+    ]
+  },
+  {
+    "id": "cli/libraries",
+    "titleZh": "库",
+    "summary": "介绍 Nest 库的概念与用法：库是不能独立运行、必须被应用导入的 Nest 项目，内置支持只在 monorepo 模式下可用。文档说明用 nest g library 创建库、生成的目录与 nest-cli.json 元数据（type 为 library、entryFile 为 index），以及通过 @app 路径别名导入、构建并随应用打包的方式。",
+    "sections": [
+      {
+        "heading": "库的定位",
+        "text": "库是打包为 Nest 项目的可复用组件集合，必须有宿主应用才能运行；标准模式可用 npm 包实现类似能力，内置库支持只在 monorepo 中提供。把公司通用模块如 AuthModule 做成库后，提交即让所有应用拿到最新版本，便于协作与端到端测试。"
+      },
+      {
+        "heading": "创建库项目",
+        "text": "nest g library my-library 会询问前缀，默认 @app 或 nest-cli.json 的 defaultLibraryPrefix，并在 libs/ 下生成项目，含 index.ts、模块、服务与 tsconfig.lib.json。projects 中新增条目，type 为 library，entryFile 为 index。"
+      },
+      {
+        "heading": "在应用中使用",
+        "text": "库通过 @app 路径别名导入，Nest 在根 tsconfig.json 写入 @app/my-library 的 paths 映射，在应用模块 import 该模块即可使用。Jest 等测试工具不读 tsconfig paths，需在 moduleNameMapper 中镜像别名。"
+      },
+      {
+        "heading": "构建与打包",
+        "text": "nest build my-library 可单独构建库；应用导入库后，nest build 会自动完成模块解析并把库一起打包。monorepo 默认使用 Rspack，输出单个打包文件；需要生成多个独立文件时，可在 nest-cli.json 中把 builder 切换为 tsc 或 swc。"
+      }
+    ],
+    "keyPoints": [
+      "nest g library my-library 创建库，会询问 @app 等路径前缀",
+      "库生成在 libs/ 下，含 index.ts、模块、服务与 tsconfig.lib.json",
+      "nest-cli.json 中库的 type 为 library，entryFile 为 index",
+      "通过 tsconfig paths 映射的 @app/my-library 别名导入库模块",
+      "Jest e2e 需在 moduleNameMapper 中镜像别名，否则运行时报错",
+      "nest build my-library 单独构建，应用构建时会自动打包库依赖"
+    ],
+    "snippets": [
+      {
+        "title": "在应用模块中导入库",
+        "lang": "typescript",
+        "code": "import { Module } from '@nestjs/common';\nimport { AppController } from './app.controller.js';\nimport { AppService } from './app.service.js';\nimport { MyLibraryModule } from '@app/my-library';\n\n@Module({\n  imports: [MyLibraryModule],\n  controllers: [AppController],\n  providers: [AppService],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "库的项目元数据与路径别名",
+        "lang": "json",
+        "code": "{\n  \"projects\": {\n    \"my-library\": {\n      \"type\": \"library\",\n      \"root\": \"libs/my-library\",\n      \"entryFile\": \"index\",\n      \"sourceRoot\": \"libs/my-library/src\",\n      \"compilerOptions\": {\n        \"tsConfigPath\": \"libs/my-library/tsconfig.lib.json\"\n      }\n    }\n  },\n  \"compilerOptions\": {\n    \"paths\": {\n      \"@app/my-library\": [\"./libs/my-library/src\"],\n      \"@app/my-library/*\": [\"./libs/my-library/src/*\"]\n    }\n  }\n}"
+      }
+    ],
+    "api": [
+      "nest generate library",
+      "@app",
+      "tsconfig paths",
+      "nest-cli.json",
+      "defaultLibraryPrefix",
+      "entryFile"
+    ],
+    "pitfalls": [
+      "库代码与具体应用耦合会导致无法复用，创建前先做解耦设计",
+      "Jest、Vitest 不读 tsconfig paths，需在测试配置里镜像别名",
+      "标准模式没有内置库支持，只能用 npm 包方式共享代码"
+    ],
+    "enterprise": "把认证、日志、数据库等跨应用能力沉到 libs/，每个库暴露一个根模块与 index.ts；用 @app 前缀别名统一导入，e2e 配置镜像别名，必要时再打包成 npm 包对外发布。",
+    "related": [
+      "cli/monorepo",
+      "modules",
+      "fundamentals/dynamic-modules"
+    ]
+  },
+  {
+    "id": "cli/usages",
+    "titleZh": "CLI 命令参考",
+    "summary": "Nest CLI 命令参考，逐条列出 nest new、generate、build、start、add、upgrade、deploy、info 的语法、参数与选项。涵盖脚手架交互项（包管理器、ESM/CommonJS、Observe）、generate 的 schematic 别名表、build 与 start 的 builder 和 watch 选项、升级脚本的迁移动作，以及 nest info 的输出内容。",
+    "sections": [
+      {
+        "heading": "new 与 generate",
+        "text": "nest new <name> 创建标准模式项目，询问包管理器、模块系统与 Observe；非交互环境需传名字与 --package-manager。nest generate 依 schematic 生成组件，支持 app、library、controller 等及 --flat、--no-spec、--project 选项。"
+      },
+      {
+        "heading": "build 与 start",
+        "text": "nest build [name...] 编译应用，并处理 tsconfig 路径映射、Swagger 与 GraphQL 插件标注，支持 --builder tsc/swc/rspack、--watch、--all。nest start 先构建再用 node 运行，支持 --debug、--env-file、--exec，还可用 -- 向应用传参数。"
+      },
+      {
+        "heading": "导入、升级与部署",
+        "text": "nest add 导入打包为 nest library 的包并执行安装 schematic；nest upgrade 把 v11 项目升到 v12，升级依赖、迁移 nest-cli.json 的 webpack 选项、GraphQL 配置与 Jest 版本；nest deploy 是 Mau CLI 薄封装，把参数转发给 mau deploy。"
+      },
+      {
+        "heading": "info 与帮助",
+        "text": "nest info 输出操作系统、Node 与各 @nestjs 包的版本，便于排查环境问题。所有命令与选项都可以加 --help 查看，命令和选项均有别名，如 n、g、-d、-p。upgrade 只升级本地 CLI，全局安装的 CLI 需要自己先更新到最新版本。"
+      }
+    ],
+    "keyPoints": [
+      "nest new 交互选择包管理器、ESM/CommonJS 与是否接入 Observe",
+      "nest generate 支持 app、library、controller 等 schematic",
+      "nest build 处理路径映射与 Swagger/GraphQL CLI 插件标注",
+      "nest start 支持 --debug、--env-file、--exec 与 -- 传参",
+      "nest upgrade 把 v11 项目升到 v12，并迁移构建与依赖配置",
+      "nest deploy 转发参数给 Mau CLI，nest info 输出环境与包版本"
+    ],
+    "snippets": [
+      {
+        "title": "常用命令与选项",
+        "lang": "bash",
+        "code": "# 创建项目（非交互）\n$ nest new my-app --package-manager pnpm --skip-git\n\n# 生成组件\n$ nest generate controller cats --no-spec\n$ nest g resource users\n\n# 构建与启动\n$ nest build --builder swc\n$ nest start --watch --env-file .env\n\n# 升级与信息\n$ nest upgrade --dry-run\n$ nest info\n$ nest generate --help"
+      },
+      {
+        "title": "推荐的 package.json 脚本",
+        "lang": "json",
+        "code": "{\n  \"scripts\": {\n    \"build\": \"nest build\",\n    \"start\": \"nest start\",\n    \"start:dev\": \"nest start --watch\",\n    \"start:debug\": \"nest start --debug --watch\",\n    \"lint\": \"oxlint\",\n    \"test\": \"vitest run\",\n    \"test:e2e\": \"vitest run --config vitest.e2e.config.ts\"\n  }\n}"
+      }
+    ],
+    "api": [
+      "nest new",
+      "nest generate",
+      "nest build",
+      "nest start",
+      "nest add",
+      "nest upgrade",
+      "nest deploy",
+      "nest info"
+    ],
+    "pitfalls": [
+      "upgrade 只升级本地 CLI，全局 CLI 需要先手动更新到最新",
+      "非交互环境运行 deploy 会直接失败，需先安装 @nestjs/mau",
+      "build 的 --webpack 与 nest-cli 的 webpack 选项已废弃，改用 builder"
+    ],
+    "enterprise": "把 build、start 等命令固化到 package.json scripts 并统一使用；CI 用 nest build --all 构建 monorepo，升级前先 dry-run 检查变更，再按迁移指南处理需要人工确认的项。",
+    "related": [
+      "cli/overview",
+      "cli/scripts",
+      "migration-guide"
+    ]
+  },
+  {
+    "id": "cli/scripts",
+    "titleZh": "CLI 与脚本",
+    "summary": "说明 nest 命令与编译器、package.json 脚本如何协作：nest build 是 tsc、swc（monorepo 下为 Rspack）的封装，nest start 先构建再用 node 运行，nest generate 生成代码。推荐通过 package.json 脚本调用本地安装的 CLI 以获得依赖管理，并给出从 tsc-watch、ts-node 迁移的脚本写法。",
+    "sections": [
+      {
+        "heading": "nest 二进制与构建执行",
+        "text": "nest 是 OS 级命令行，覆盖构建、执行、生成三类能力。nest build 封装 tsc 或 swc，monorepo 下则是 Rspack，除处理 tsconfig-paths 与已启用的 CLI 插件外不增加编译步骤；nest start 先确保项目已构建，再以可移植方式调用 node 执行编译产物。"
+      },
+      {
+        "heading": "package 脚本",
+        "text": "全局安装 nest 时 CLI 不受 package.json 管理，不同开发者可能运行不同版本。推荐把 @nestjs/cli 与编译器装为 devDependencies，用 npm run build、npm run start 调用本地 CLI，从而获得完整依赖管理并保证团队版本一致。"
+      },
+      {
+        "heading": "向后兼容与迁移",
+        "text": "Nest 应用是纯 TypeScript 应用，旧版构建与执行脚本仍可用，不强制升级。若想从 tsc-watch、ts-node 迁移，可全局和本地各安装 @nestjs/cli，再把 package.json 的 scripts 替换为 nest build、nest start、nest start --watch。"
+      }
+    ],
+    "keyPoints": [
+      "nest build 封装 tsc、swc 或 Rspack，只额外处理路径映射与插件",
+      "nest start 先构建再用 node 执行编译产物，可整体替换",
+      "全局安装的 CLI 不受 package.json 管理，团队版本可能不一致",
+      "推荐把 @nestjs/cli 装为 devDependencies，用 npm scripts 调用",
+      "build 与 start 有内置脚本，new 与 generate 不属于构建流水线",
+      "旧脚本向后兼容，可按需迁移到 nest build 与 nest start"
+    ],
+    "snippets": [
+      {
+        "title": "迁移后的 package.json 脚本",
+        "lang": "json",
+        "code": "{\n  \"scripts\": {\n    \"build\": \"nest build\",\n    \"start\": \"nest start\",\n    \"start:dev\": \"nest start --watch\",\n    \"start:debug\": \"nest start --debug --watch\",\n    \"lint\": \"oxlint\",\n    \"format\": \"prettier --write \\\"src/**/*.ts\\\"\"\n  },\n  \"devDependencies\": {\n    \"@nestjs/cli\": \"^12.0.0\",\n    \"typescript\": \"^6.0.0\"\n  }\n}"
+      },
+      {
+        "title": "安装 CLI 并迁移脚本",
+        "lang": "bash",
+        "code": "# 全局安装：命令行可用\n$ npm install -g @nestjs/cli\n\n# 本地再装为开发依赖：构建与执行由 package.json 管理\n$ cd /some/project/root/folder\n$ npm install -D @nestjs/cli\n\n# 之后统一通过 npm scripts 调用本地 CLI\n$ npm run build\n$ npm run start\n$ npm run start:dev\n\n# 确认本地 CLI 版本\n$ npx nest --version"
+      }
+    ],
+    "api": [
+      "nest build",
+      "nest start",
+      "nest generate",
+      "@nestjs/cli",
+      "package.json scripts"
+    ],
+    "pitfalls": [
+      "全局安装 nest 会让不同项目共用同一版本，与本地依赖冲突",
+      "tsc-watch、ts-node 的旧脚本仍可用，但拿不到 CLI 插件能力",
+      "nest new 与 nest generate 不在构建流水线中，没有内置脚本"
+    ],
+    "enterprise": "项目统一把 CLI 与编译器列为 devDependencies，scripts 只调用本地二进制；CI 和 Docker 用 npm ci 后执行 npm run build，避免全局版本漂移，旧项目可渐进迁移。",
+    "related": [
+      "cli/overview",
+      "cli/usages",
+      "cli/monorepo"
+    ]
+  }
+]

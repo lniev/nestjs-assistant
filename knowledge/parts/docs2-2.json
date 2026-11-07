@@ -1,0 +1,353 @@
+[
+  {
+    "id": "fundamentals/lazy-loading-modules",
+    "titleZh": "惰性加载模块",
+    "summary": "模块默认在启动时全部急切加载，在 serverless 等冷启动敏感场景会成为瓶颈。LazyModuleLoader 允许用动态 import() 配合 load(() => LazyModule) 按需加载模块，首次加载后缓存并共享同一模块图，从而只加载某次调用真正需要的代码；但控制器、网关、resolver 与生命周期钩子都不适用于惰性模块。",
+    "sections": [
+      {
+        "heading": "惰性加载的动机",
+        "text": "默认情况下应用启动会加载全部模块，即使某些模块只在特定触发条件（路由、日期、查询参数）下才用到。在 serverless、worker、cron、webhook 等冷启动敏感环境，按需加载能明显降低启动时间，后续还可异步预加载其它模块。"
+      },
+      {
+        "heading": "按需加载模块",
+        "text": "从 @nestjs/core 注入 LazyModuleLoader（或在 main.ts 用 app.get()），动态 import 模块类后调用 lazyModuleLoader.load(() => LazyModule)。load() 返回模块引用，可 get() 取 provider；第二参数传 { logger: false } 关闭日志。"
+      },
+      {
+        "heading": "缓存与限制",
+        "text": "惰性模块首次 load 后会被缓存，再次加载极快且与急切加载的模块共享同一模块图。但其中的控制器、resolver、网关不会按预期工作，也不能注册为全局模块，全局增强器同样不生效；生命周期钩子方法不会在惰性模块中触发。"
+      }
+    ],
+    "keyPoints": [
+      "模块默认急切加载，serverless 冷启动场景可用惰性加载降低启动时间。",
+      "LazyModuleLoader 从 @nestjs/core 导入，可注入或从 app.get() 获取。",
+      "load(() => LazyModule) 配合动态 import() 按需加载并返回模块引用。",
+      "首次加载后缓存，后续调用极快并共享同一模块图。",
+      "惰性模块中的控制器、网关、GraphQL resolver 无法按预期工作。",
+      "惰性模块的生命周期钩子不会触发，也不能注册为全局模块。",
+      "webpack 构建需 module: esnext 与 moduleResolution: node。"
+    ],
+    "snippets": [
+      {
+        "title": "按需加载模块并获取服务",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class LambdaService {\n  constructor(private readonly lazyModuleLoader: LazyModuleLoader) {}\n\n  async handle() {\n    const { LazyModule } = await import('./lazy.module.js');\n    const moduleRef = await this.lazyModuleLoader.load(() => LazyModule);\n\n    const { LazyService } = await import('./lazy.service.js');\n    return moduleRef.get(LazyService).run();\n  }\n}"
+      }
+    ],
+    "api": [
+      "LazyModuleLoader",
+      "load()",
+      "import()",
+      "ModuleRef"
+    ],
+    "pitfalls": [
+      "惰性模块中的控制器、网关、resolver 与生命周期钩子都不会按预期工作。",
+      "惰性模块不能注册为全局模块，已注册的全局增强器对它同样不生效。",
+      "Webpack 构建要把 module 改为 esnext、moduleResolution 改为 node。"
+    ],
+    "enterprise": "在 serverless 函数或按事件类型分发的 worker 中，把冷门业务模块改为惰性加载，公共基础模块保持急切加载；不要指望惰性模块承担路由注册或全局增强，路由层仍应在启动时一次性装配。",
+    "related": [
+      "fundamentals/module-ref",
+      "faq/serverless",
+      "modules",
+      "fundamentals/lifecycle-events"
+    ]
+  },
+  {
+    "id": "fundamentals/execution-context",
+    "titleZh": "执行上下文",
+    "summary": "ArgumentsHost 把不同应用上下文中的 handler 参数抽象成统一接口，可用 getType() 判断是 http、rpc、ws 还是 graphql，再用 switchToHttp() 等方法取 request、response、data；ExecutionContext 继承它并额外提供 getClass() 与 getHandler()，配合 Reflector 读取元数据，用于编写跨上下文的守卫、过滤器与拦截器。",
+    "sections": [
+      {
+        "heading": "上下文切换方法",
+        "text": "ArgumentsHost 抽象出 handler 收到的参数：Express 下是 [request, response, next]，GraphQL 下是 [root, args, context, info]。getType() 返回 http、rpc、ws，@nestjs/graphql 追加 graphql；建议用 switchTo* 切换后取值。"
+      },
+      {
+        "heading": "执行上下文与处理器",
+        "text": "ExecutionContext 继承 ArgumentsHost，额外提供 getClass() 返回处理器所属控制器的类，getHandler() 返回即将执行的 handler 方法引用。守卫的 canActivate() 与拦截器的 intercept() 都能拿到它，可据此读取类名、方法名与元数据。"
+      },
+      {
+        "heading": "Reflector 与元数据",
+        "text": "用 Reflector.createDecorator<string[]>() 可创建强类型装饰器，如 @Roles(['admin'])；在守卫中注入 Reflector，用 get() 按装饰器引用加目标读取元数据。目标是方法时传 context.getHandler()，是控制器时传 context.getClass()，两者不可混用。"
+      },
+      {
+        "heading": "合并多级元数据",
+        "text": "类级与方法级都可能声明元数据。getAllAndOverride() 按传入目标顺序返回第一个有值的元数据，适合方法覆盖默认值；getAllAndMerge() 会把两级的数组或对象合并。二者第一个参数是装饰器引用或元数据 key，第二个是目标上下文数组。"
+      }
+    ],
+    "keyPoints": [
+      "ArgumentsHost.getType() 返回 http、rpc、ws，GraphQL 追加 graphql。",
+      "switchToHttp() 返回 HttpArgumentsHost，用 getRequest() 取请求对象。",
+      "switchToWs()/switchToRpc() 分别提供 getClient() 与 getContext()。",
+      "ExecutionContext 继承 ArgumentsHost，额外提供 getClass() 与 getHandler()。",
+      "Reflector.createDecorator<T>() 创建强类型装饰器，@SetMetadata() 是底层写法。",
+      "getAllAndOverride 取首个有值元数据，getAllAndMerge 合并多级元数据。",
+      "方法用 context.getHandler()，控制器用 context.getClass()。"
+    ],
+    "snippets": [
+      {
+        "title": "跨上下文读取请求与响应",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class LoggingGuard implements CanActivate {\n  canActivate(context: ExecutionContext): boolean {\n    const type = context.getType(); // 'http' | 'rpc' | 'ws' | 'graphql'\n    if (type === 'http') {\n      const ctx = context.switchToHttp();\n      const request = ctx.getRequest<Request>();\n      const response = ctx.getResponse<Response>();\n      // 仅在 HTTP 上下文中处理 request / response\n      return Boolean(request && response);\n    }\n    return true;\n  }\n}"
+      },
+      {
+        "title": "自定义装饰器与元数据读取",
+        "lang": "typescript",
+        "code": "export const Roles = Reflector.createDecorator<string[]>();\n\n@Injectable()\nexport class RolesGuard implements CanActivate {\n  constructor(private readonly reflector: Reflector) {}\n\n  canActivate(context: ExecutionContext): boolean {\n    const roles = this.reflector.getAllAndOverride<string[]>(Roles, [\n      context.getHandler(),\n      context.getClass(),\n    ]);\n    return !roles?.length;\n  }\n}"
+      }
+    ],
+    "api": [
+      "ArgumentsHost",
+      "ExecutionContext",
+      "getType()",
+      "switchToHttp()",
+      "switchToRpc()",
+      "switchToWs()",
+      "getHandler()",
+      "getClass()",
+      "Reflector",
+      "@SetMetadata()"
+    ],
+    "pitfalls": [
+      "用 getArgByIndex 按索引取 request/response 会耦合具体上下文，跨平台易失效。",
+      "读取元数据要选对目标：方法级用 getHandler()，控制器级用 getClass()。",
+      "类与方法都有元数据时单用 get() 只读一处，需覆盖或合并时用工具方法。"
+    ],
+    "enterprise": "把鉴权、审计、多租户等横切逻辑写成基于 ExecutionContext 的守卫或拦截器，统一用 switchTo* 取平台对象、getAllAndOverride 合并类级默认与方法级覆盖，让同一套增强器服务多种上下文。",
+    "related": [
+      "guards",
+      "interceptors",
+      "custom-decorators",
+      "fundamentals/discovery-service"
+    ]
+  },
+  {
+    "id": "fundamentals/lifecycle-events",
+    "titleZh": "生命周期事件",
+    "summary": "Nest 为应用及其每个元素管理生命周期并暴露钩子：初始化阶段依次调用 onModuleInit()、onApplicationBootstrap()，终止阶段依次调用 onModuleDestroy()、beforeApplicationShutdown()、onApplicationShutdown()。关机钩子默认关闭，需在启动时调用 app.enableShutdownHooks() 才能响应 SIGTERM 等信号；钩子可返回 Promise 实现异步初始化与优雅关闭。",
+    "sections": [
+      {
+        "heading": "生命周期序列",
+        "text": "整体生命周期分为初始化、运行、终止三阶段。onModuleInit() 在宿主模块依赖解析完成后调用，onApplicationBootstrap() 在所有模块初始化完成、开始监听连接前调用；二者在 app.init()、app.listen() 或创建应用上下文时触发，关机钩子则只在 app.close() 或收到系统信号时触发。"
+      },
+      {
+        "heading": "注册与异步初始化",
+        "text": "每个钩子都有对应接口（OnModuleInit 等），实现接口即可注册，接口编译后不存在但能带来类型检查与编辑器提示。若在钩子里返回 Promise 或使用 async，Nest 会等待其完成再继续启动流程，适合启动时拉取远程配置或预热缓存。"
+      },
+      {
+        "heading": "优雅关机",
+        "text": "onModuleDestroy()、beforeApplicationShutdown()、onApplicationShutdown() 在终止时依次执行；后两者接收系统信号名参数，onModuleDestroy() 没有参数。钩子返回 Promise 时，Nest 会等到 resolve 或 reject 后再继续下一步，保证资源按序释放。"
+      },
+      {
+        "heading": "启用关机钩子",
+        "text": "关机钩子监听会占用系统资源，因此默认禁用。必须在 bootstrap 中调用 app.enableShutdownHooks() 才能让 SIGTERM 等信号触发清理；同一 Node.js 进程运行多个 Nest 实例时还要注意监听器数量警告。Windows 上 SIGTERM 无法工作。"
+      }
+    ],
+    "keyPoints": [
+      "onModuleInit() 在依赖解析后调用，onApplicationBootstrap() 在监听前调用。",
+      "终止阶段依次执行 onModuleDestroy()、beforeApplicationShutdown()、onApplicationShutdown()。",
+      "钩子按模块距根节点的顺序执行，最深导入的模块最先，根模块最后，关机逆序。",
+      "关机钩子默认关闭，必须调用 app.enableShutdownHooks() 才会响应 SIGTERM。",
+      "钩子方法可返回 Promise，Nest 会等待其完成再推进生命周期。",
+      "请求作用域（request-scoped）类不会触发生命周期钩子。",
+      "beforeApplicationShutdown() 与 onApplicationShutdown() 会收到信号名参数。"
+    ],
+    "snippets": [
+      {
+        "title": "实现初始化与关机钩子",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class UsersService implements OnModuleInit, OnApplicationShutdown {\n  onModuleInit(): void {\n    console.log('The module has been initialized.');\n  }\n\n  onApplicationShutdown(signal: string): void {\n    console.log(signal); // e.g. \"SIGINT\"\n  }\n}"
+      },
+      {
+        "title": "在启动文件启用关机钩子",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  // Starts listening for shutdown hooks\n  app.enableShutdownHooks();\n\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      }
+    ],
+    "api": [
+      "OnModuleInit",
+      "OnApplicationBootstrap",
+      "OnModuleDestroy",
+      "BeforeApplicationShutdown",
+      "OnApplicationShutdown",
+      "enableShutdownHooks()",
+      "app.close()"
+    ],
+    "pitfalls": [
+      "不调用 enableShutdownHooks() 时容器收到 SIGTERM 不会触发任何清理钩子。",
+      "请求作用域类不会触发钩子，不能指望在其中做连接初始化或清理。",
+      "app.close() 只执行关机序列不结束进程，残留 interval 或后台任务会让进程不退出。"
+    ],
+    "enterprise": "Kubernetes 须开启关机钩子，并在 onModuleDestroy 或 onApplicationShutdown 中按序关闭数据库连接、刷新日志与消息缓冲；重初始化放到 onApplicationBootstrap 配合就绪探针。",
+    "related": [
+      "fundamentals/injection-scopes",
+      "application/task-scheduling",
+      "standalone-applications",
+      "faq/request-lifecycle"
+    ]
+  },
+  {
+    "id": "fundamentals/discovery-service",
+    "titleZh": "发现服务",
+    "summary": "DiscoveryService 由 @nestjs/core 提供，用于在运行时内省 Nest 应用：导入 DiscoveryModule 后可注入该服务，枚举全部 provider 与 controller 的 InstanceWrapper（含实例、令牌、metatype），按模块过滤，并读取自定义装饰器挂载的元数据；DiscoveryService.createDecorator() 还能创建自动登记被标记类的装饰器。",
+    "sections": [
+      {
+        "heading": "启用发现服务",
+        "text": "在需要使用的模块 imports 中导入 DiscoveryModule，之后即可在任意 provider 的构造函数中注入 DiscoveryService。它依赖应用的完整模块图，因此适合放在启动后运行或被生命周期钩子调用，而不是在模块加载过程中使用。"
+      },
+      {
+        "heading": "枚举组件",
+        "text": "getProviders() 与 getControllers() 返回应用内所有已注册实例的 InstanceWrapper 数组，wrapper 上可拿到 instance、token 与 metatype。两者都接受可选的 { include: [SomeModule] } 选项，把扫描范围限制在指定模块，适合按模块批量处理组件的插件。"
+      },
+      {
+        "heading": "读取装饰器元数据",
+        "text": "DiscoveryService.createDecorator() 可创建装饰器，给类或方法写入元数据；用 getMetadataByDecorator(FeatureFlag, wrapper) 读取，第三参数可传方法名；getProviders({ metadataKey: FeatureFlag.KEY }) 可直接筛出被标记的 provider。"
+      }
+    ],
+    "keyPoints": [
+      "先导入 DiscoveryModule 才能注入 DiscoveryService。",
+      "getProviders()/getControllers() 返回 InstanceWrapper，含实例、令牌与 metatype。",
+      "两个方法都支持 { include: [Module] } 限定扫描的模块范围。",
+      "DiscoveryService.createDecorator() 创建装饰器，其 KEY 可作 metadataKey 过滤。",
+      "getMetadataByDecorator(decorator, wrapper) 读取元数据，第三参数可指定方法名。",
+      "适合插件、自动注册、特性开关与运行时扫描等内省型场景。"
+    ],
+    "snippets": [
+      {
+        "title": "按装饰器元数据筛选 provider",
+        "lang": "typescript",
+        "code": "export const FeatureFlag = DiscoveryService.createDecorator();\n\n@Injectable()\n@FeatureFlag('experimental')\nexport class CustomService {}\n\n@Injectable()\nexport class ScannerService {\n  constructor(private readonly discoveryService: DiscoveryService) {}\n\n  getExperimental() {\n    const providers = this.discoveryService.getProviders({\n      metadataKey: FeatureFlag.KEY,\n    });\n    return providers.filter(\n      (p) =>\n        this.discoveryService.getMetadataByDecorator(FeatureFlag, p) ===\n        'experimental',\n    );\n  }\n}"
+      }
+    ],
+    "api": [
+      "DiscoveryService",
+      "DiscoveryModule",
+      "getProviders()",
+      "getControllers()",
+      "getMetadataByDecorator()",
+      "createDecorator()",
+      "InstanceWrapper"
+    ],
+    "pitfalls": [
+      "未导入 DiscoveryModule 就注入 DiscoveryService 会直接依赖解析失败。",
+      "遍历 InstanceWrapper 时要跳过 metatype 为 undefined 的内置 wrapper。",
+      "发现结果应在启动或初始化阶段缓存，不要在每次请求重复扫描。"
+    ],
+    "enterprise": "插件化平台可用 DiscoveryService 扫描带自定义装饰器的 provider，实现策略自动注册、特性开关与扩展点；把扫描结果在启动时缓存为 Map，避免运行时重复遍历整张模块图带来的开销。",
+    "related": [
+      "fundamentals/execution-context",
+      "fundamentals/module-ref",
+      "custom-decorators",
+      "fundamentals/lifecycle-events"
+    ]
+  },
+  {
+    "id": "fundamentals/platform-agnosticism",
+    "titleZh": "平台无关性",
+    "summary": "Nest 是平台无关框架：模块、provider、守卫、拦截器、管道等构建块不绑定具体 HTTP 服务器，可在 Express 与 Fastify 间复用，也能跨应用类型复用——HTTP 服务、不同传输层的微服务、WebSocket 网关以及 GraphQL API 层。应用上下文还可把 Nest 用作 cron 任务、CLI 等任意 Node.js 应用的基础。",
+    "sections": [
+      {
+        "heading": "一次构建到处运行",
+        "text": "Nest 的核心构建块与传输层解耦，官方文档以 HTTP 服务器为主线演示的编码技巧，同样能跑在各种传输层之上，例如使用不同 transporter 的微服务与 WebSocket 网关。平台差异由 platform adapter 隔离，从 Express 切换到 Fastify 通常只需替换适配器。"
+      },
+      {
+        "heading": "跨传输层与 GraphQL",
+        "text": "除了 HTTP 与微服务，Nest 还提供专门的 @nestjs/graphql 模块，可把 GraphQL 当作 REST 的替代 API 层。同一套领域模块既能暴露 REST 路由，也能暴露 GraphQL resolver 或 WebSocket 事件，复用依赖注入与守卫、拦截器、管道等增强器。"
+      },
+      {
+        "heading": "应用上下文",
+        "text": "application context（standalone application）特性让 Nest 不依赖 HTTP 服务器即可运行，因此 cron 任务、CLI 工具、消息消费者等任意 Node.js 应用都能建立在 Nest 之上，复用其依赖注入、模块与生命周期管理，获得更高的模块化与可复用性。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 核心构建块（模块、provider、守卫、拦截器、管道）不绑定 HTTP 平台。",
+      "同一组件可跨 Express/Fastify 以及微服务、WebSocket 等不同传输层复用。",
+      "@nestjs/graphql 让 GraphQL 可作为 API 层与 REST 互换使用。",
+      "应用上下文（standalone application）可构建 cron 任务、CLI 等应用。",
+      "平台差异通过适配器（adapter）层隔离，业务代码保持平台无关。",
+      "把可复用逻辑沉淀为独立模块，即可在不同应用类型间共享。"
+    ],
+    "snippets": [],
+    "api": [
+      "@nestjs/graphql"
+    ],
+    "pitfalls": [
+      "把 Express 专有对象（如中间件签名）写进业务逻辑，换 Fastify 时会失效。",
+      "在守卫中用 getArgByIndex 取参数会耦合上下文，应改用 switchTo* 方法。",
+      "HTTP、微服务、WebSocket 的请求对象结构不同，共用组件要按类型分支。"
+    ],
+    "enterprise": "把领域逻辑写成不依赖 HTTP 的模块与 provider，控制器、网关、resolver 只做传输适配；这样同一套核心能在 REST、微服务、WebSocket 与 CLI/cron 之间复用，也便于不启动服务器做集成测试。",
+    "related": [
+      "standalone-applications",
+      "microservices/basics",
+      "websockets/gateways",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "fundamentals/testing",
+    "titleZh": "测试",
+    "summary": "Nest 内置 @nestjs/testing 提供测试运行时：Test.createTestingModule() 接收模块元数据，compile() 得到可与真实应用一致解析依赖的 TestingModule；get() 取静态实例、resolve() 取作用域实例，useMocker() 自动 mock 缺失依赖，overrideProvider 等可替换组件，配合 Supertest 与 createNestApplication() 完成端到端测试。",
+    "sections": [
+      {
+        "heading": "隔离测试与 Test 类",
+        "text": "最简单的单元测试手工 new 出被测类并传入依赖，这种不依赖框架的隔离测试就足够验证纯逻辑。当被测代码大量使用依赖注入时，改用 @nestjs/testing 的 Test 类：Test.createTestingModule 接收与 @Module() 相同的元数据对象，compile() 启动一个带完整依赖注入能力的测试模块。"
+      },
+      {
+        "heading": "编译测试模块",
+        "text": "compile() 是异步的必须 await；之后用 moduleRef.get(Token) 取静态实例。transient 或 request-scoped provider 必须用 resolve()，它返回独立 DI 子树中的实例；多次调用得到的引用不相等。"
+      },
+      {
+        "heading": "自动 mock 与覆盖",
+        "text": "依赖很多时，可用 useMocker(factory) 为所有缺失依赖批量生成 mock，factory 接收令牌并返回 mock 实现；REQUEST 与 INQUIRER 不能自动 mock，可用 override 替换。overrideProvider、overrideGuard、overrideInterceptor 等都支持链式调用。"
+      },
+      {
+        "heading": "端到端测试",
+        "text": "e2e 用 createNestApplication() 创建应用 init()，再用 Supertest 的 request(app.getHttpServer()) 模拟请求；用 overrideProvider().useValue() 注入替身。全局增强器以 APP_GUARD 的 useClass 注册时无法覆盖，需改成 useExisting。"
+      }
+    ],
+    "keyPoints": [
+      "安装 @nestjs/testing；纯逻辑可用手工实例化的隔离测试，不依赖框架。",
+      "Test.createTestingModule({...}).compile() 返回可 get() 的 TestingModule。",
+      "compile() 是异步的必须 await；get() 只能取静态实例，作用域实例用 resolve()。",
+      "useMocker((token) => ...) 为缺失依赖批量生成 mock，REQUEST/INQUIRER 除外。",
+      "overrideProvider、overrideGuard、overrideInterceptor 等可链式替换组件。",
+      "e2e 用 createNestApplication() 与 request(app.getHttpServer())。",
+      "全局增强器要能被覆盖，需把 APP_GUARD 的 useClass 改成 useExisting。"
+    ],
+    "snippets": [
+      {
+        "title": "测试模块单元测试骨架",
+        "lang": "typescript",
+        "code": "import { vi } from 'vitest';\nimport { Test } from '@nestjs/testing';\nimport { CatsController } from './cats.controller.js';\nimport { CatsService } from './cats.service.js';\n\ndescribe('CatsController', () => {\n  let controller: CatsController;\n  let service: CatsService;\n\n  beforeEach(async () => {\n    const moduleRef = await Test.createTestingModule({\n      controllers: [CatsController],\n      providers: [CatsService],\n    }).compile();\n\n    controller = moduleRef.get(CatsController);\n    service = moduleRef.get(CatsService);\n  });\n});"
+      },
+      {
+        "title": "端到端测试覆盖 provider",
+        "lang": "typescript",
+        "code": "import request from 'supertest';\nimport { Test } from '@nestjs/testing';\nimport { CatsModule } from '../../src/cats/cats.module.js';\n\ndescribe('Cats (e2e)', () => {\n  let app: INestApplication;\n\n  beforeAll(async () => {\n    const moduleRef = await Test.createTestingModule({ imports: [CatsModule] })\n      .overrideProvider(CatsService)\n      .useValue({ findAll: () => ['test'] })\n      .compile();\n\n    app = moduleRef.createNestApplication();\n    await app.init();\n  });\n\n  it('/GET cats', () =>\n    request(app.getHttpServer()).get('/cats').expect(200));\n\n  afterAll(async () => app.close());\n});"
+      }
+    ],
+    "api": [
+      "Test",
+      "Test.createTestingModule()",
+      "compile()",
+      "TestingModule",
+      "useMocker()",
+      "overrideProvider()",
+      "createNestApplication()",
+      "get()",
+      "resolve()"
+    ],
+    "pitfalls": [
+      "忘记 await compile() 会得到未初始化的测试模块，后续取值可能失败。",
+      "全局增强器用 APP_GUARD 的 useClass 注册时无法被 overrideProvider 替换。",
+      "compile() 阶段尚未创建 HTTP adapter，HTTP 服务器相关依赖此时不可用。"
+    ],
+    "enterprise": "团队统一用 TestingModule 构建单测、用 createNestApplication 加 Supertest 构建 e2e，常用 mock 工厂抽成共享 helper；覆盖全局守卫时用 useExisting 注册。",
+    "related": [
+      "fundamentals/module-ref",
+      "fundamentals/custom-providers",
+      "fundamentals/injection-scopes",
+      "http/performance"
+    ]
+  }
+]

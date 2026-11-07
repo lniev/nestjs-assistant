@@ -1,0 +1,314 @@
+[
+  {
+    "id": "data/sequelize",
+    "titleZh": "Sequelize",
+    "summary": "通过 @nestjs/sequelize 集成 Sequelize，并借助 sequelize-typescript 的装饰器声明模型。SequelizeModule.forRoot() 建立连接，forFeature() 注册当前模块的模型，@InjectModel() 注入模型类；页面覆盖 Active Record 模型、关系装饰器、autoLoadModels、托管事务、迁移、多连接、测试 mock 与 forRootAsync 异步配置。",
+    "sections": [
+      {
+        "heading": "连接与模型注册",
+        "text": "forRoot() 支持 Sequelize 构造器的全部配置，并额外提供 retryAttempts、retryDelay、autoLoadModels 与 synchronize。连接建立后 Sequelize 实例可全局注入；模型通过 forFeature([User]) 注册，再用 @InjectModel(User) 注入模型类。"
+      },
+      {
+        "heading": "模型与关系",
+        "text": "Sequelize 采用 Active Record 模式，模型类继承 Model 并用 @Table、@Column 声明表与列。关系用 @HasMany、@BelongsTo 等装饰器定义，例如 @HasMany(() => Photo) 声明一个用户有多张照片；跨模块使用模型需要在模块的 exports 中导出 SequelizeModule。"
+      },
+      {
+        "heading": "事务与迁移",
+        "text": "官方示例使用托管事务：注入 Sequelize 后调用 sequelize.transaction(async t => ...)，把 { transaction: t } 传给每次 create，回调抛错则自动回滚。迁移由 Sequelize CLI 管理，代码独立于 Nest 应用源码，因此迁移里不能使用依赖注入。"
+      },
+      {
+        "heading": "多连接与异步配置",
+        "text": "多连接必须设置唯一 name，forFeature 与 @InjectModel 第二个参数按名称区分，@InjectConnection('albumsConnection') 注入对应实例，工厂用 getConnectionToken()。forRootAsync 支持 useFactory、useClass 与 useExisting。"
+      }
+    ],
+    "keyPoints": [
+      "forRoot() 接受 Sequelize 全部配置，额外提供 autoLoadModels 等",
+      "forFeature([Model]) 注册模型，@InjectModel(Model) 注入模型类",
+      "模型继承 Model 并用 @Table、@Column 装饰器声明",
+      "@HasMany 等装饰器定义关系，跨模块需导出 SequelizeModule",
+      "托管事务用 sequelize.transaction()，每次操作传 transaction",
+      "多连接必须命名，注入时传连接名或 getConnectionToken()",
+      "单测用 getModelToken(User) 提供 mock 模型"
+    ],
+    "snippets": [
+      {
+        "title": "定义模型并注入",
+        "lang": "typescript",
+        "code": "import { Column, Model, Table, HasMany } from 'sequelize-typescript';\nimport { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/sequelize';\n\n@Table\nexport class User extends Model {\n  @Column\n  firstName: string;\n\n  @Column({ defaultValue: true })\n  isActive: boolean;\n\n  @HasMany(() => Photo)\n  photos: Photo[];\n}\n\n@Injectable()\nexport class UsersService {\n  constructor(@InjectModel(User) private userModel: typeof User) {}\n}"
+      },
+      {
+        "title": "托管事务写入",
+        "lang": "typescript",
+        "code": "async createMany() {\n  await this.sequelize.transaction(async (t) => {\n    const transactionHost = { transaction: t };\n\n    await this.userModel.create(\n      { firstName: 'Abraham', lastName: 'Lincoln' },\n      transactionHost,\n    );\n    await this.userModel.create(\n      { firstName: 'John', lastName: 'Booth' },\n      transactionHost,\n    );\n  });\n}"
+      }
+    ],
+    "api": ["SequelizeModule", "forRoot()", "forRootAsync()", "forFeature()", "@InjectModel()", "@InjectConnection()", "getModelToken()", "autoLoadModels", "@Table", "@HasMany"],
+    "pitfalls": [
+      "生产环境不要依赖 synchronize，用迁移管理表结构",
+      "模型未通过 forFeature 注册、仅被关联引用时不会被自动加载",
+      "迁移由 Sequelize CLI 管理，无法使用 Nest 的依赖注入"
+    ],
+    "enterprise": "适合已有 Sequelize 生态或团队熟悉 Active Record 的项目。模型放领域模块目录，forRootAsync 从 ConfigService 读取连接配置，生产关闭 synchronize 改用 CLI 迁移。",
+    "related": ["data/typeorm", "data/mikroorm", "fundamentals/custom-providers", "fundamentals/async-providers"]
+  },
+  {
+    "id": "data/caching",
+    "titleZh": "缓存",
+    "summary": "缓存是提升性能最直接的手段：@nestjs/cache-manager 在内存中保存热点数据，避免重复查询或计算。CacheModule.register() 初始化缓存，CACHE_MANAGER 注入 Cache 实例读写；CacheInterceptor 可自动缓存响应。页面涵盖 TTL、按方法覆盖、替代存储（Redis 等）、异步配置与 WebSocket、微服务场景。",
+    "sections": [
+      {
+        "heading": "基础读写",
+        "text": "CacheModule.register() 使用默认内存存储即可开始缓存；注入 CACHE_MANAGER token 得到 Cache 实例，用 get()、set()、del()、clear() 操作。set() 第三个参数是毫秒级 TTL，传 0 表示永不过期；get() 未命中返回 undefined（旧版返回 null），迁移时要同时兼容两者。"
+      },
+      {
+        "heading": "自动缓存响应",
+        "text": "把 CacheInterceptor 绑定到控制器或全局 APP_INTERCEPTOR 即可缓存响应，默认只缓存 GET 且按请求 URL 生成键；注入 @Res() 的路由无法使用它。用 @CacheKey() 与 @CacheTTL() 按方法覆盖键与过期时间，方法级设置优先于控制器级与全局默认值。"
+      },
+      {
+        "heading": "替代存储与 TTL",
+        "text": "默认 TTL 未设置即永不过期，可在 register({ ttl: 5000 }) 指定。切换到 Redis 等存储需安装对应 Keyv 适配器，通过 stores 数组注册，第一个是默认存储、其余为回退；把 CacheModule 设为 isGlobal 可在各业务模块共享同一份配置与存储。"
+      },
+      {
+        "heading": "异步配置与扩展",
+        "text": "registerAsync() 支持 useFactory、useClass（实现 CacheOptionsFactory）与 useExisting。缓存键需按请求头等自定义维度区分时，继承 CacheInterceptor 并覆盖 trackBy()。WebSocket 与微服务场景必须配合 @CacheKey() 才会缓存。"
+      }
+    ],
+    "keyPoints": [
+      "CacheModule.register() 初始化缓存，CACHE_MANAGER 注入 Cache",
+      "get/set/del/clear 操作缓存，set 第三参数是毫秒 TTL，0 不过期",
+      "CacheInterceptor 自动缓存响应，默认只缓存 GET 端点",
+      "@CacheKey() 与 @CacheTTL() 可在方法或控制器级覆盖键与 TTL",
+      "替代存储通过 Keyv 适配器与 stores 数组注册，首个为默认",
+      "自定义维度用子类覆盖 CacheInterceptor 的 trackBy()",
+      "全局注册缓存拦截器用 APP_INTERCEPTOR 提供 CacheInterceptor"
+    ],
+    "snippets": [
+      {
+        "title": "注册缓存并手动读写",
+        "lang": "typescript",
+        "code": "import { Module, Inject, Injectable } from '@nestjs/common';\nimport { CacheModule, CACHE_MANAGER, Cache } from '@nestjs/cache-manager';\n\n@Module({\n  imports: [CacheModule.register({ ttl: 5000, isGlobal: true })],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class UsersService {\n  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}\n\n  async findOne(id: string) {\n    const cached = await this.cacheManager.get('user:' + id);\n    if (cached) return cached;\n    const user = await this.load(id);\n    await this.cacheManager.set('user:' + id, user, 10_000);\n    return user;\n  }\n}"
+      },
+      {
+        "title": "拦截器自动缓存",
+        "lang": "typescript",
+        "code": "import { Controller, Get, UseInterceptors } from '@nestjs/common';\nimport { CacheKey, CacheTTL, CacheInterceptor } from '@nestjs/cache-manager';\n\n@Controller()\n@CacheTTL(5000)\nexport class AppController {\n  @Get('cats')\n  @UseInterceptors(CacheInterceptor)\n  @CacheKey('custom_key')\n  @CacheTTL(2000)\n  findAll(): string[] {\n    return [];\n  }\n}"
+      }
+    ],
+    "api": ["CacheModule", "CacheInterceptor", "@CacheKey()", "@CacheTTL()", "CACHE_MANAGER", "Cache", "CacheOptionsFactory", "register()", "registerAsync()"],
+    "pitfalls": [
+      "GraphQL 中拦截器按字段解析器执行，CacheModule 无法正确缓存",
+      "内存存储保存的是引用，修改缓存对象会同时改动缓存条目",
+      "Redis 存储必须监听 error 事件，否则连接断开会崩溃进程"
+    ],
+    "enterprise": "适合读多写少、可容忍短暂不一致的查询接口。缓存键按业务维度设计并显式设置 TTL，生产用 Redis 存储，配合全局 CacheModule 在各业务模块共享。",
+    "related": ["data/overview", "application/configuration", "graphql/quick-start", "data/typeorm"]
+  },
+  {
+    "id": "http/versioning",
+    "titleZh": "版本控制",
+    "summary": "版本控制让同一应用同时运行控制器或单个路由的多个版本，为破坏性变更提供过渡期。Nest 支持 URI、Header、Media Type 与自定义 extractor 四种版本类型，可在控制器或方法上用 version 指定，支持数组多版本、VERSION_NEUTRAL 与全局 defaultVersion，也涵盖中间件版本匹配与 Express、Fastify 差异。",
+    "sections": [
+      {
+        "heading": "四种版本类型",
+        "text": "URI 版本把版本放进路径（如 /v1/cats），默认前缀 v，可用 prefix 修改或设为 false；Header 版本读取指定请求头；Media Type 版本从 Accept 头解析，key 需包含键与分隔符（如 v=）；自定义版本用 extractor 返回字符串或数组，并从高到低匹配路由。"
+      },
+      {
+        "heading": "控制器与路由版本",
+        "text": "@Controller({ version: '1' }) 为控制器内所有路由设定版本，@Version('1') 则作用于单个方法并覆盖控制器版本。version 可传数组表示同时支持多个版本；VERSION_NEUTRAL 声明与版本无关的资源，URI 模式下它不带版本前缀，注册顺序要放在带版本路由之后。"
+      },
+      {
+        "heading": "全局默认与中间件",
+        "text": "enableVersioning 可配合 defaultVersion 为未指定版本的路由提供默认值，取值可为字符串、数组或 VERSION_NEUTRAL。中间件通过 forRoutes({ path, method, version }) 指定目标版本；Header、Media Type 与自定义版本下所有版本共享同一路径，中间件会命中全部版本。"
+      },
+      {
+        "heading": "适配器差异",
+        "text": "Express 适配器下自定义 extractor 返回多元素数组时无法可靠选出最高匹配版本，需要该行为应改用 Fastify。请求的版本没有对应路由时返回 404；启用版本但未声明版本且无默认版本时，路由按 VERSION_NEUTRAL 处理，只在无版本路径可达。"
+      }
+    ],
+    "keyPoints": [
+      "四种类型：URI、Header、Media Type 与自定义 extractor",
+      "app.enableVersioning({ type: VersioningType.URI }) 启用版本",
+      "@Controller({ version }) 与 @Version() 分别作用于控制器和方法",
+      "version 传数组表示多版本，VERSION_NEUTRAL 表示与版本无关",
+      "defaultVersion 为未声明版本的路由提供全局默认",
+      "中间件用 forRoutes 的 version 字段匹配目标版本",
+      "Express 下自定义 extractor 只应返回单个版本"
+    ],
+    "snippets": [
+      {
+        "title": "启用 URI 版本",
+        "lang": "typescript",
+        "code": "import { VersioningType } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.enableVersioning({\n    type: VersioningType.URI,\n    prefix: 'v',\n    defaultVersion: '1',\n  });\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "控制器与方法版本",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Version } from '@nestjs/common';\n\n@Controller({ version: '1' })\nexport class CatsControllerV1 {\n  @Get('cats')\n  findAll(): string {\n    return 'version 1';\n  }\n}\n\n@Controller()\nexport class CatsController {\n  @Version('2')\n  @Get('cats')\n  findAllV2(): string {\n    return 'version 2';\n  }\n}"
+      }
+    ],
+    "api": ["VersioningType", "enableVersioning()", "@Version()", "VERSION_NEUTRAL", "defaultVersion", "@Controller()", "forRoutes()"],
+    "pitfalls": [
+      "URI 版本会自动加 v 前缀，带全局前缀时位于前缀与路由之间",
+      "VERSION_NEUTRAL 路由注册在带版本路由之前会抢走请求",
+      "Express 下自定义 extractor 返回数组时无法可靠选最高版本"
+    ],
+    "enterprise": "对外 API 做破坏性升级时用 URI 版本最直观，内部服务或需要精细控制的场景用 Header 版本。把版本号收敛到常量与 DTO 命名中，并用中间件按版本做灰度与监控。",
+    "related": ["controllers", "middleware", "faq/global-prefix", "http/performance"]
+  },
+  {
+    "id": "http/cookies",
+    "titleZh": "Cookies",
+    "summary": "NestJS v12.1 起内置 Cookie 支持：@Cookies() 与 @SignedCookies() 参数装饰器读取请求 Cookie，HTTP 适配器的 setCookie() 与 clearCookie() 写入 Set-Cookie，cookies 应用选项启用签名与密钥轮换。页面涵盖 Cookie 选项、签名格式、无效输入校验，以及继续使用 cookie-parser 或 @fastify/cookie 的兼容方式。",
+    "sections": [
+      {
+        "heading": "读取 Cookie",
+        "text": "@Cookies() 不带参数返回全部 Cookie 对象，@Cookies('theme') 读取单个值，未发送的名字解析为 undefined。Nest 仅在参数需要时解析 Cookie 头且每请求至多一次，值会百分号解码，同名多次出现取第一个。与 @Query() 一样可在名字后接管道做校验。"
+      },
+      {
+        "heading": "写入与清除",
+        "text": "通过 HttpAdapterHost 拿到 httpAdapter，调用 setCookie(res, name, value, options) 追加 Set-Cookie，clearCookie(res, name) 立即过期。选项含 path、domain、maxAge（秒）、httpOnly、secure、sameSite 与 signed。"
+      },
+      {
+        "heading": "签名与轮换",
+        "text": "在 NestFactory.create 的 cookies.secret 配置密钥后，setCookie 传 signed: true，读取用 @SignedCookies()：签名校验通过返回原值，缺失、未签名、被篡改或密钥不匹配时返回 undefined。secret 传数组时会用第一个签名、用全部验证，便于无损轮换。"
+      },
+      {
+        "heading": "兼容与安全",
+        "text": "已有 cookie-parser 或 @fastify/cookie 的应用可用：@Cookies() 优先返回 req.cookies，@SignedCookies() 配置 cookies.secret 时用 Nest 密钥校验，否则回退 signedCookies。setCookie 拒绝非法名字与属性并抛 TypeError，用户输入要先校验。"
+      }
+    ],
+    "keyPoints": [
+      "@Cookies() 与 @SignedCookies() 均从 @nestjs/common 导入",
+      "setCookie/clearCookie 通过 HttpAdapterHost 注入的适配器调用",
+      "maxAge 单位是秒，Express 的 res.cookie 用的是毫秒",
+      "签名用 cookies.secret 配置，传数组可实现无缝轮换",
+      "签名只保证完整性，值仍是明文，不应存放敏感数据",
+      "非法 Cookie 名或属性会抛 TypeError 而非被转义",
+      "未设置 httpOnly、secure、sameSite 时没有默认安全值"
+    ],
+    "snippets": [
+      {
+        "title": "读取与清除签名 Cookie",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Res, SignedCookies, UnauthorizedException } from '@nestjs/common';\nimport { HttpAdapterHost } from '@nestjs/core';\n\n@Controller('auth')\nexport class AuthController {\n  constructor(private readonly adapterHost: HttpAdapterHost) {}\n\n  @Get('profile')\n  getProfile(@SignedCookies('uid') userId?: string) {\n    if (!userId) {\n      throw new UnauthorizedException();\n    }\n    return { userId };\n  }\n\n  @Get('logout')\n  signOut(@Res({ passthrough: true }) res: unknown) {\n    this.adapterHost.httpAdapter.clearCookie(res, 'uid');\n  }\n}"
+      },
+      {
+        "title": "启用签名密钥",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule, {\n    cookies: {\n      secret: process.env.COOKIE_SECRET,\n    },\n  });\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      }
+    ],
+    "api": ["@Cookies()", "@SignedCookies()", "setCookie()", "clearCookie()", "CookieSerializeOptions", "HttpAdapterHost", "cookies.secret"],
+    "pitfalls": [
+      "把 maxAge 从 Express 的毫秒直接搬来会让 Cookie 存活千倍",
+      "signed 选项只防篡改不防读取，敏感数据不要放进 Cookie",
+      "secret 为 undefined 时直到读写签名 Cookie 才抛异常"
+    ],
+    "enterprise": "把会话标识等凭证放入签名 Cookie 时始终显式设置 httpOnly、secure 与 sameSite；密钥用环境变量并采用数组轮换，配合全局异常过滤器统一处理 401。",
+    "related": ["http/session", "security/csrf", "security/authentication", "http/versioning"]
+  },
+  {
+    "id": "http/session",
+    "titleZh": "Session",
+    "summary": "HTTP Session 在多个请求之间保存用户状态，对 MVC 应用尤其有用。Express 下安装 express-session 并作为全局中间件启用，通过 @Req() 或 @Session() 读写 session；Fastify 下改用 @fastify/secure-session 插件，两者的 session 对象 API 不同。页面还说明 secret、resave、saveUninitialized 等关键选项与生产注意事项。",
+    "sections": [
+      {
+        "heading": "Express 中的会话",
+        "text": "安装 express-session 后在 main.ts 用 app.use(session({ secret, resave, saveUninitialized })) 注册。secret 用于签名 session ID Cookie，可传字符串或数组（数组时第一个用于签名、全部用于校验）。resave 默认 true，但依赖默认值已废弃。"
+      },
+      {
+        "heading": "读写 session 数据",
+        "text": "注入 @Req() 得到 request 后直接读写 request.session 属性，也可以用 @Session() 装饰器取出 session 对象，两者等价。session 中间件的默认内存存储只适合开发环境：它会泄漏内存、无法跨进程扩展，生产必须换成 Redis 等共享存储。"
+      },
+      {
+        "heading": "Fastify 的会话",
+        "text": "Fastify 下安装并注册 @fastify/secure-session，传入 secret 与 salt，或使用预生成密钥与密钥轮换。session 对象提供 get() 与 set() 方法而不是直接属性赋值，@Session() 同样可用，类型为 secureSession.Session，其余选项见插件文档。"
+      },
+      {
+        "heading": "安全与部署",
+        "text": "建议开启 cookie.secure: true，但这要求站点走 HTTPS；若 Node 服务在代理之后，还需在 Express 中设置 trust proxy。生产环境应替换默认存储、设置合理的 Cookie 属性，并考虑负载均衡下多实例共享同一份 session 存储。"
+      }
+    ],
+    "keyPoints": [
+      "Express 用 express-session，Fastify 用 secure-session 插件",
+      "@Session() 或 @Req() 均可从请求中取出 session 对象",
+      "secret 用于签名 session ID Cookie，可传字符串或数组",
+      "默认内存存储仅供开发，生产应换共享存储",
+      "resave 与 saveUninitialized 建议显式设置而非依赖默认值",
+      "cookie.secure: true 需要 HTTPS，代理后要设置 trust proxy",
+      "Fastify 的 session 用 get()/set()，不是属性赋值"
+    ],
+    "snippets": [
+      {
+        "title": "Express 注册 session",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport session from 'express-session';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.use(\n    session({\n      secret: 'my-secret',\n      resave: false,\n      saveUninitialized: false,\n      cookie: { secure: true },\n    }),\n  );\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "用 @Session() 读写",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Session } from '@nestjs/common';\n\n@Controller()\nexport class AppController {\n  @Get()\n  findAll(@Session() session: Record<string, any>) {\n    session.visits = session.visits ? session.visits + 1 : 1;\n    return { visits: session.visits };\n  }\n}"
+      }
+    ],
+    "api": ["@Session()", "@Req()", "express-session", "@fastify/secure-session", "secret", "resave", "saveUninitialized"],
+    "pitfalls": [
+      "默认内存存储会泄漏内存且无法多实例共享，生产不可用",
+      "cookie.secure 开启后走 HTTP 访问不会下发 Cookie",
+      "Fastify 的 session 用 get/set，直接属性赋值不会生效"
+    ],
+    "enterprise": "适合服务端渲染的 MVC 后台与需要跨请求保存流程状态的应用。会话存储统一换成 Redis，Cookie 设置 httpOnly、secure、sameSite，secret 从环境变量注入并支持轮换。",
+    "related": ["http/cookies", "http/mvc", "security/authentication", "security/csrf"]
+  },
+  {
+    "id": "http/file-upload",
+    "titleZh": "文件上传与流式传输",
+    "summary": "覆盖两个方向：接收客户端上传与向客户端流式返回文件。Express 下基于 multer 提供 FileInterceptor、FilesInterceptor、FileFieldsInterceptor、AnyFilesInterceptor 与 NoFilesInterceptor，配合 @UploadedFile() 与 ParseFilePipe 做校验；Fastify 下由 @fastify/multipart 提供同名 API。还讲内存与磁盘存储、limits 与 StreamableFile。",
+    "sections": [
+      {
+        "heading": "上传与校验",
+        "text": "FileInterceptor('file') 拦截单个字段并把文件放入 @UploadedFile()，参数是字段名与可选 MulterOptions。校验用 ParseFilePipe 搭配 MaxFileSizeValidator、FileTypeValidator；文件默认必填，可用 fileIsRequired: false 改为可选。"
+      },
+      {
+        "heading": "多文件与默认选项",
+        "text": "FilesInterceptor('files', 5) 接收同名字段的多文件，FileFieldsInterceptor 按不同字段名分组接收，AnyFilesInterceptor 接收任意字段，NoFilesInterceptor 只接收文本字段。MulterModule.register() 设置模块级默认选项，拦截器传入的选项优先。"
+      },
+      {
+        "heading": "内存与磁盘存储",
+        "text": "Multer 默认 memoryStorage，文件整体读入内存并暴露为 file.buffer，必须用 limits.fileSize 限制大小，否则大文件会耗尽内存。diskStorage 让文件流式落盘，文件对象返回 destination、filename 与 path 而不是 buffer；处理完成后要删除临时文件。"
+      },
+      {
+        "heading": "流式返回文件",
+        "text": "返回 StreamableFile 让 Nest 负责把流写入响应，构造函数接受 Readable 或 Uint8Array，可传 type、disposition、length 设置响应头，也可用 @Header() 设置静态头。直接用 @Res() 管道会接管响应，导致后续拦截器不再执行；流错误可用 setErrorHandler() 定制。"
+      }
+    ],
+    "keyPoints": [
+      "FileInterceptor 配合 @UploadedFile() 处理单文件上传",
+      "@UploadedFile 上的 ParseFilePipe 校验大小与 MIME 类型",
+      "多文件用 FilesInterceptor 与 FileFieldsInterceptor 等",
+      "MulterModule.register() 设置默认选项，拦截器选项优先",
+      "默认内存存储须设 limits.fileSize，大文件改用 diskStorage",
+      "返回 StreamableFile 而非 @Res() 管道以保留拦截器",
+      "Fastify 从 @nestjs/platform-fastify/multipart 导入拦截器"
+    ],
+    "snippets": [
+      {
+        "title": "单文件上传与校验",
+        "lang": "typescript",
+        "code": "import {\n  Controller, Post, UploadedFile, UseInterceptors,\n  ParseFilePipe, MaxFileSizeValidator, FileTypeValidator,\n} from '@nestjs/common';\nimport { FileInterceptor } from '@nestjs/platform-express';\n\n@Controller('files')\nexport class FilesController {\n  @Post('upload')\n  @UseInterceptors(FileInterceptor('file'))\n  uploadFile(\n    @UploadedFile(\n      new ParseFilePipe({\n        validators: [\n          new MaxFileSizeValidator({ maxSize: 1000 }),\n          new FileTypeValidator({ fileType: 'image/jpeg' }),\n        ],\n      }),\n    )\n    file: Express.Multer.File,\n  ) {\n    return { size: file.size };\n  }\n}"
+      },
+      {
+        "title": "返回 StreamableFile",
+        "lang": "typescript",
+        "code": "import { Controller, Get, StreamableFile } from '@nestjs/common';\nimport { createReadStream } from 'node:fs';\nimport { join } from 'node:path';\n\n@Controller('file')\nexport class FileController {\n  @Get()\n  getFile(): StreamableFile {\n    const file = createReadStream(join(process.cwd(), 'package.json'));\n    return new StreamableFile(file, {\n      type: 'application/json',\n      disposition: 'attachment; filename=package.json',\n    });\n  }\n}"
+      }
+    ],
+    "api": ["FileInterceptor()", "FilesInterceptor()", "FileFieldsInterceptor()", "AnyFilesInterceptor()", "@UploadedFile()", "@UploadedFiles()", "ParseFilePipe", "ParseFilePipeBuilder", "StreamableFile", "MulterModule"],
+    "pitfalls": [
+      "Multer 默认不限制文件大小，内存存储必须设 limits.fileSize",
+      "落盘文件不会自动清理，处理完需自行删除，失败路径也一样",
+      "ParseFilePipe 在收完整文件后才校验，limits 才能提前中断"
+    ],
+    "enterprise": "上传接口统一用 ParseFilePipeBuilder 收敛大小与 MIME 校验，生产把文件流式写入对象存储，避免中转临时文件；下载统一返回 StreamableFile 以兼容 Express 与 Fastify。",
+    "related": ["http/performance", "application/file-storage", "pipes", "http/compression"]
+  }
+]

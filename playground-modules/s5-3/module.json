@@ -1,0 +1,58 @@
+{
+  "id": "s5-3",
+  "itemId": "s5-3",
+  "stageId": "s5",
+  "stageIndex": 5,
+  "itemIndex": 3,
+  "stageTitleZh": "认证授权与安全",
+  "titleZh": "密码学与密钥管理",
+  "title": "密码学与密钥管理",
+  "level": "L3",
+  "goal": "正确使用慢哈希与对称加密：密码用 bcrypt/argon2，敏感字段用 AES-GCM，密钥走 KMS。",
+  "practice": "在操练场把用户手机号加密入库，再在返回 DTO 时做脱敏展示。",
+  "deliverable": "密码哈希服务与敏感字段加解密的仓储装饰",
+  "accept": "数据库看不到明文密码或手机号，单测覆盖加解密往返",
+  "minutes": 240,
+  "pageIds": [
+    "security/encryption-and-hashing"
+  ],
+  "summary": "密码用 scrypt 慢哈希（随机盐 + timingSafeEqual），手机号用 AES-256-GCM 加密入库（node:crypto），出参解密后脱敏成 138****8000；密钥环 k1→k2 支持轮换。GET /users/1/raw 能直接看到库里只有密文与哈希，/crypto/roundtrip 演示加解密往返。",
+  "defaultFile": "src/crypto/crypto.service.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users/1/raw",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/crypto/roundtrip?phone=13800138000",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/crypto/verify?name=alice&password=s3cret",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "expect": 400
+    }
+  ]
+}

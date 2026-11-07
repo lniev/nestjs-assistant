@@ -1,0 +1,1077 @@
+{
+  "docs1": {
+    "chapters": [
+      "introduction",
+      "overview",
+      "deployment",
+      "standalone-apps"
+    ],
+    "pages": [
+      {
+        "id": "introduction",
+        "source": "introduction.md",
+        "title": "Introduction",
+        "chapter": "introduction"
+      },
+      {
+        "id": "first-steps",
+        "source": "first-steps.md",
+        "title": "First steps",
+        "chapter": "overview"
+      },
+      {
+        "id": "controllers",
+        "source": "controllers.md",
+        "title": "Controllers",
+        "chapter": "overview"
+      },
+      {
+        "id": "providers",
+        "source": "components.md",
+        "title": "Providers",
+        "chapter": "overview"
+      },
+      {
+        "id": "modules",
+        "source": "modules.md",
+        "title": "Modules",
+        "chapter": "overview"
+      },
+      {
+        "id": "middleware",
+        "source": "middlewares.md",
+        "title": "Middleware",
+        "chapter": "overview"
+      },
+      {
+        "id": "exception-filters",
+        "source": "exception-filters.md",
+        "title": "Exception filters",
+        "chapter": "overview"
+      },
+      {
+        "id": "pipes",
+        "source": "pipes.md",
+        "title": "Pipes",
+        "chapter": "overview"
+      },
+      {
+        "id": "guards",
+        "source": "guards.md",
+        "title": "Guards",
+        "chapter": "overview"
+      },
+      {
+        "id": "interceptors",
+        "source": "interceptors.md",
+        "title": "Interceptors",
+        "chapter": "overview"
+      },
+      {
+        "id": "custom-decorators",
+        "source": "custom-decorators.md",
+        "title": "Custom decorators",
+        "chapter": "overview"
+      },
+      {
+        "id": "deployment",
+        "source": "deployment.md",
+        "title": "Deployment",
+        "chapter": "deployment"
+      },
+      {
+        "id": "standalone-applications",
+        "source": "application-context.md",
+        "title": "Standalone apps",
+        "chapter": "standalone-apps"
+      }
+    ]
+  },
+  "docs2": {
+    "chapters": [
+      "fundamentals"
+    ],
+    "pages": [
+      {
+        "id": "fundamentals/custom-providers",
+        "source": "fundamentals/dependency-injection.md",
+        "title": "Custom providers",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/async-providers",
+        "source": "fundamentals/async-components.md",
+        "title": "Asynchronous providers",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/dynamic-modules",
+        "source": "fundamentals/dynamic-modules.md",
+        "title": "Dynamic modules",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/injection-scopes",
+        "source": "fundamentals/provider-scopes.md",
+        "title": "Injection scopes",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/circular-dependency",
+        "source": "fundamentals/circular-dependency.md",
+        "title": "Circular dependency",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/module-ref",
+        "source": "fundamentals/module-reference.md",
+        "title": "Module reference",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/lazy-loading-modules",
+        "source": "fundamentals/lazy-loading-modules.md",
+        "title": "Lazy-loading modules",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/execution-context",
+        "source": "fundamentals/execution-context.md",
+        "title": "Execution context",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/lifecycle-events",
+        "source": "fundamentals/lifecycle-events.md",
+        "title": "Lifecycle events",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/discovery-service",
+        "source": "fundamentals/discovery-service.md",
+        "title": "Discovery service",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/platform-agnosticism",
+        "source": "fundamentals/platform-agnosticism.md",
+        "title": "Platform agnosticism",
+        "chapter": "fundamentals"
+      },
+      {
+        "id": "fundamentals/testing",
+        "source": "fundamentals/unit-testing.md",
+        "title": "Testing",
+        "chapter": "fundamentals"
+      }
+    ]
+  },
+  "docs3": {
+    "chapters": [
+      "application",
+      "cli"
+    ],
+    "pages": [
+      {
+        "id": "application/configuration",
+        "source": "application/configuration.md",
+        "title": "Configuration",
+        "chapter": "application"
+      },
+      {
+        "id": "application/validation",
+        "source": "application/validation.md",
+        "title": "Validation",
+        "chapter": "application"
+      },
+      {
+        "id": "application/serialization",
+        "source": "application/serialization.md",
+        "title": "Serialization",
+        "chapter": "application"
+      },
+      {
+        "id": "application/logger",
+        "source": "application/logger.md",
+        "title": "Logging",
+        "chapter": "application"
+      },
+      {
+        "id": "application/events",
+        "source": "application/events.md",
+        "title": "Events",
+        "chapter": "application"
+      },
+      {
+        "id": "application/task-scheduling",
+        "source": "application/task-scheduling.md",
+        "title": "Task scheduling",
+        "chapter": "application"
+      },
+      {
+        "id": "application/queues",
+        "source": "application/queues.md",
+        "title": "Queues",
+        "chapter": "application"
+      },
+      {
+        "id": "application/http-client",
+        "source": "application/http-client.md",
+        "title": "HTTP client",
+        "chapter": "application"
+      },
+      {
+        "id": "application/i18n",
+        "source": "application/i18n.md",
+        "title": "Internationalization",
+        "chapter": "application"
+      },
+      {
+        "id": "application/mail",
+        "source": "application/mail.md",
+        "title": "Mail",
+        "chapter": "application"
+      },
+      {
+        "id": "application/file-storage",
+        "source": "application/file-storage.md",
+        "title": "File storage",
+        "chapter": "application"
+      },
+      {
+        "id": "cli/overview",
+        "source": "cli/overview.md",
+        "title": "Overview",
+        "chapter": "cli"
+      },
+      {
+        "id": "cli/monorepo",
+        "source": "cli/workspaces.md",
+        "title": "Workspaces",
+        "chapter": "cli"
+      },
+      {
+        "id": "cli/libraries",
+        "source": "cli/libraries.md",
+        "title": "Libraries",
+        "chapter": "cli"
+      },
+      {
+        "id": "cli/usages",
+        "source": "cli/usages.md",
+        "title": "Usage",
+        "chapter": "cli"
+      },
+      {
+        "id": "cli/scripts",
+        "source": "cli/scripts.md",
+        "title": "Scripts",
+        "chapter": "cli"
+      }
+    ]
+  },
+  "docs4": {
+    "chapters": [
+      "data",
+      "http"
+    ],
+    "pages": [
+      {
+        "id": "data/overview",
+        "source": "data/overview.md",
+        "title": "Overview",
+        "chapter": "data"
+      },
+      {
+        "id": "data/typeorm",
+        "source": "data/typeorm.md",
+        "title": "TypeORM",
+        "chapter": "data"
+      },
+      {
+        "id": "data/drizzle",
+        "source": "data/drizzle.md",
+        "title": "Drizzle",
+        "chapter": "data"
+      },
+      {
+        "id": "data/mongodb",
+        "source": "data/mongo.md",
+        "title": "MongoDB",
+        "chapter": "data"
+      },
+      {
+        "id": "data/prisma",
+        "source": "data/prisma.md",
+        "title": "Prisma",
+        "chapter": "data"
+      },
+      {
+        "id": "data/mikroorm",
+        "source": "data/mikroorm.md",
+        "title": "MikroORM",
+        "chapter": "data"
+      },
+      {
+        "id": "data/sequelize",
+        "source": "data/sequelize.md",
+        "title": "Sequelize",
+        "chapter": "data"
+      },
+      {
+        "id": "data/caching",
+        "source": "data/caching.md",
+        "title": "Caching",
+        "chapter": "data"
+      },
+      {
+        "id": "http/versioning",
+        "source": "http/versioning.md",
+        "title": "Versioning",
+        "chapter": "http"
+      },
+      {
+        "id": "http/cookies",
+        "source": "http/cookies.md",
+        "title": "Cookies",
+        "chapter": "http"
+      },
+      {
+        "id": "http/session",
+        "source": "http/sessions.md",
+        "title": "Session",
+        "chapter": "http"
+      },
+      {
+        "id": "http/file-upload",
+        "source": "http/file-upload.md",
+        "title": "File upload and streaming",
+        "chapter": "http"
+      },
+      {
+        "id": "http/compression",
+        "source": "http/compression.md",
+        "title": "Compression",
+        "chapter": "http"
+      },
+      {
+        "id": "http/server-sent-events",
+        "source": "http/server-sent-events.md",
+        "title": "Server-Sent Events",
+        "chapter": "http"
+      },
+      {
+        "id": "http/mvc",
+        "source": "http/mvc.md",
+        "title": "Model-View-Controller",
+        "chapter": "http"
+      },
+      {
+        "id": "http/performance",
+        "source": "http/performance.md",
+        "title": "HTTP adapters",
+        "chapter": "http"
+      },
+      {
+        "id": "http/webhooks",
+        "source": "http/webhooks.md",
+        "title": "Webhooks",
+        "chapter": "http"
+      }
+    ]
+  },
+  "docs5": {
+    "chapters": [
+      "security",
+      "reliability"
+    ],
+    "pages": [
+      {
+        "id": "security/authentication",
+        "source": "security/authentication.md",
+        "title": "Authentication",
+        "chapter": "security"
+      },
+      {
+        "id": "security/authorization",
+        "source": "security/authorization.md",
+        "title": "Authorization",
+        "chapter": "security"
+      },
+      {
+        "id": "security/encryption-and-hashing",
+        "source": "security/encryption-hashing.md",
+        "title": "Encryption and Hashing",
+        "chapter": "security"
+      },
+      {
+        "id": "security/helmet",
+        "source": "security/helmet.md",
+        "title": "Security headers",
+        "chapter": "security"
+      },
+      {
+        "id": "security/cors",
+        "source": "security/cors.md",
+        "title": "CORS",
+        "chapter": "security"
+      },
+      {
+        "id": "security/csrf",
+        "source": "security/csrf.md",
+        "title": "CSRF Protection",
+        "chapter": "security"
+      },
+      {
+        "id": "security/rate-limiting",
+        "source": "security/rate-limiting.md",
+        "title": "Rate limiting",
+        "chapter": "security"
+      },
+      {
+        "id": "reliability/resilience",
+        "source": "reliability/resilience.md",
+        "title": "Resilience",
+        "chapter": "reliability"
+      },
+      {
+        "id": "reliability/idempotency",
+        "source": "reliability/idempotency.md",
+        "title": "Idempotency keys",
+        "chapter": "reliability"
+      },
+      {
+        "id": "reliability/outbox",
+        "source": "reliability/outbox.md",
+        "title": "Transactional outbox",
+        "chapter": "reliability"
+      },
+      {
+        "id": "reliability/workflows",
+        "source": "reliability/workflows.md",
+        "title": "Durable workflows",
+        "chapter": "reliability"
+      },
+      {
+        "id": "reliability/locks",
+        "source": "reliability/locks.md",
+        "title": "Distributed locks",
+        "chapter": "reliability"
+      },
+      {
+        "id": "reliability/terminus",
+        "source": "reliability/terminus.md",
+        "title": "Health checks",
+        "chapter": "reliability"
+      }
+    ]
+  },
+  "docs6": {
+    "chapters": [
+      "observability",
+      "devtools",
+      "migration-guide",
+      "appendix",
+      "support-us",
+      "discover"
+    ],
+    "pages": [
+      {
+        "id": "observability/overview",
+        "source": "observability/overview.md",
+        "title": "Overview",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/sdk",
+        "source": "observability/sdk.md",
+        "title": "SDK",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/manual-instrumentation",
+        "source": "observability/manual-instrumentation.md",
+        "title": "Manual instrumentation",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/distributed-tracing",
+        "source": "observability/distributed-tracing.md",
+        "title": "Distributed tracing",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/error-monitoring",
+        "source": "observability/error-monitoring.md",
+        "title": "Error monitoring",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/dashboard",
+        "source": "observability/dashboard.md",
+        "title": "Dashboard",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/production-rules",
+        "source": "observability/production-rules.md",
+        "title": "Production rules",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/mcp-server",
+        "source": "observability/mcp-server.md",
+        "title": "MCP server",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/opentelemetry",
+        "source": "observability/opentelemetry.md",
+        "title": "OpenTelemetry",
+        "chapter": "observability"
+      },
+      {
+        "id": "observability/choosing-an-apm",
+        "source": "observability/choosing-an-apm.md",
+        "title": "Choosing an APM",
+        "chapter": "observability"
+      },
+      {
+        "id": "devtools/overview",
+        "source": "devtools/overview.md",
+        "title": "Overview",
+        "chapter": "devtools"
+      },
+      {
+        "id": "devtools/ci-cd-integration",
+        "source": "devtools/ci-cd.md",
+        "title": "CI/CD integration",
+        "chapter": "devtools"
+      },
+      {
+        "id": "migration-guide",
+        "source": "migration.md",
+        "title": "Migration guide",
+        "chapter": "migration-guide"
+      },
+      {
+        "id": "appendix/enterprise",
+        "source": "enterprise.md",
+        "title": "Official NestJS Consulting",
+        "chapter": "appendix"
+      },
+      {
+        "id": "support",
+        "source": "support.md",
+        "title": "Support us",
+        "chapter": "support-us"
+      },
+      {
+        "id": "discover/companies",
+        "source": "discover/who-uses.md",
+        "title": "Who is using Nest?",
+        "chapter": "discover"
+      }
+    ]
+  },
+  "docs7": {
+    "chapters": [
+      "graphql"
+    ],
+    "pages": [
+      {
+        "id": "graphql/quick-start",
+        "source": "graphql/quick-start.md",
+        "title": "Quick start",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/resolvers",
+        "source": "graphql/resolvers-map.md",
+        "title": "Resolvers",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/mutations",
+        "source": "graphql/mutations.md",
+        "title": "Mutations",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/subscriptions",
+        "source": "graphql/subscriptions.md",
+        "title": "Subscriptions",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/scalars",
+        "source": "graphql/scalars.md",
+        "title": "Scalars",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/directives",
+        "source": "graphql/directives.md",
+        "title": "Directives",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/interfaces",
+        "source": "graphql/interfaces.md",
+        "title": "Interfaces",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/unions-and-enums",
+        "source": "graphql/unions-and-enums.md",
+        "title": "Unions and Enums",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/field-middleware",
+        "source": "graphql/field-middleware.md",
+        "title": "Field middleware",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/mapped-types",
+        "source": "graphql/mapped-types.md",
+        "title": "Mapped types",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/plugins",
+        "source": "graphql/plugins.md",
+        "title": "Plugins",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/complexity",
+        "source": "graphql/complexity.md",
+        "title": "Complexity",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/extensions",
+        "source": "graphql/extensions.md",
+        "title": "Extensions",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/cli-plugin",
+        "source": "graphql/cli-plugin.md",
+        "title": "CLI Plugin",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/generating-sdl",
+        "source": "graphql/schema-generator.md",
+        "title": "Generating SDL",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/sharing-models",
+        "source": "graphql/sharing-models.md",
+        "title": "Sharing models",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/other-features",
+        "source": "graphql/guards-interceptors.md",
+        "title": "Other features",
+        "chapter": "graphql"
+      },
+      {
+        "id": "graphql/federation",
+        "source": "graphql/federation.md",
+        "title": "Federation",
+        "chapter": "graphql"
+      }
+    ]
+  },
+  "docs8": {
+    "chapters": [
+      "websockets",
+      "mcp",
+      "ai"
+    ],
+    "pages": [
+      {
+        "id": "websockets/gateways",
+        "source": "websockets/gateways.md",
+        "title": "Gateways",
+        "chapter": "websockets"
+      },
+      {
+        "id": "websockets/exception-filters",
+        "source": "websockets/exception-filters.md",
+        "title": "Exception filters",
+        "chapter": "websockets"
+      },
+      {
+        "id": "websockets/pipes",
+        "source": "websockets/pipes.md",
+        "title": "Pipes",
+        "chapter": "websockets"
+      },
+      {
+        "id": "websockets/guards",
+        "source": "websockets/guards.md",
+        "title": "Guards",
+        "chapter": "websockets"
+      },
+      {
+        "id": "websockets/interceptors",
+        "source": "websockets/interceptors.md",
+        "title": "Interceptors",
+        "chapter": "websockets"
+      },
+      {
+        "id": "websockets/adapter",
+        "source": "websockets/adapter.md",
+        "title": "Adapters",
+        "chapter": "websockets"
+      },
+      {
+        "id": "mcp/overview",
+        "source": "mcp/overview.md",
+        "title": "Overview",
+        "chapter": "mcp"
+      },
+      {
+        "id": "mcp/primitives",
+        "source": "mcp/primitives.md",
+        "title": "Primitives",
+        "chapter": "mcp"
+      },
+      {
+        "id": "mcp/transports",
+        "source": "mcp/transports.md",
+        "title": "Transports",
+        "chapter": "mcp"
+      },
+      {
+        "id": "mcp/testing",
+        "source": "mcp/testing.md",
+        "title": "Testing",
+        "chapter": "mcp"
+      },
+      {
+        "id": "mcp/migration",
+        "source": "mcp/migration.md",
+        "title": "Migration",
+        "chapter": "mcp"
+      },
+      {
+        "id": "ai/overview",
+        "source": "ai/overview.md",
+        "title": "Overview",
+        "chapter": "ai"
+      },
+      {
+        "id": "ai/models",
+        "source": "ai/models.md",
+        "title": "Models",
+        "chapter": "ai"
+      },
+      {
+        "id": "ai/tools",
+        "source": "ai/tools.md",
+        "title": "Tools",
+        "chapter": "ai"
+      },
+      {
+        "id": "ai/agents",
+        "source": "ai/agents.md",
+        "title": "Agents",
+        "chapter": "ai"
+      },
+      {
+        "id": "ai/testing",
+        "source": "ai/testing.md",
+        "title": "Testing",
+        "chapter": "ai"
+      }
+    ]
+  },
+  "docs9": {
+    "chapters": [
+      "microservices",
+      "openapi"
+    ],
+    "pages": [
+      {
+        "id": "microservices/basics",
+        "source": "microservices/basics.md",
+        "title": "Overview",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/redis",
+        "source": "microservices/redis.md",
+        "title": "Redis",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/mqtt",
+        "source": "microservices/mqtt.md",
+        "title": "MQTT",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/nats",
+        "source": "microservices/nats.md",
+        "title": "NATS",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/rabbitmq",
+        "source": "microservices/rabbitmq.md",
+        "title": "RabbitMQ",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/kafka",
+        "source": "microservices/kafka.md",
+        "title": "Kafka",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/grpc",
+        "source": "microservices/grpc.md",
+        "title": "gRPC",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/custom-transport",
+        "source": "microservices/custom-transport.md",
+        "title": "Custom transporters",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/exception-filters",
+        "source": "microservices/exception-filters.md",
+        "title": "Exception filters",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/pipes",
+        "source": "microservices/pipes.md",
+        "title": "Pipes",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/pre-request-hooks",
+        "source": "microservices/pre-request-hooks.md",
+        "title": "Pre-request hooks",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/guards",
+        "source": "microservices/guards.md",
+        "title": "Guards",
+        "chapter": "microservices"
+      },
+      {
+        "id": "microservices/interceptors",
+        "source": "microservices/interceptors.md",
+        "title": "Interceptors",
+        "chapter": "microservices"
+      },
+      {
+        "id": "openapi/introduction",
+        "source": "openapi/introduction.md",
+        "title": "Introduction",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/types-and-parameters",
+        "source": "openapi/types-and-parameters.md",
+        "title": "Types and Parameters",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/operations",
+        "source": "openapi/operations.md",
+        "title": "Operations",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/security",
+        "source": "openapi/security.md",
+        "title": "Security",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/mapped-types",
+        "source": "openapi/mapped-types.md",
+        "title": "Mapped Types",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/decorators",
+        "source": "openapi/decorators.md",
+        "title": "Decorators",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/cli-plugin",
+        "source": "openapi/cli-plugin.md",
+        "title": "CLI Plugin",
+        "chapter": "openapi"
+      },
+      {
+        "id": "openapi/other-features",
+        "source": "openapi/other-features.md",
+        "title": "Other features",
+        "chapter": "openapi"
+      }
+    ]
+  },
+  "docs10": {
+    "chapters": [
+      "recipes",
+      "faq"
+    ],
+    "pages": [
+      {
+        "id": "recipes/repl",
+        "source": "recipes/repl.md",
+        "title": "REPL",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/crud-generator",
+        "source": "recipes/crud-generator.md",
+        "title": "CRUD generator",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/swc",
+        "source": "recipes/swc.md",
+        "title": "SWC (fast compiler)",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/passport",
+        "source": "recipes/passport.md",
+        "title": "Passport (auth)",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/hot-reload",
+        "source": "recipes/hot-reload.md",
+        "title": "Hot reload",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/router-module",
+        "source": "recipes/router-module.md",
+        "title": "Router module",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/fastify-migration",
+        "source": "recipes/fastify-migration.md",
+        "title": "Migrating from Fastify",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/cqrs",
+        "source": "recipes/cqrs.md",
+        "title": "CQRS",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/serve-static",
+        "source": "recipes/serve-static.md",
+        "title": "Serve static",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/nextjs",
+        "source": "recipes/nextjs.md",
+        "title": "Next.js",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/nest-commander",
+        "source": "recipes/nest-commander.md",
+        "title": "Commander",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/async-local-storage",
+        "source": "recipes/async-local-storage.md",
+        "title": "Async local storage",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/socket-activation",
+        "source": "recipes/socket-activation.md",
+        "title": "Socket activation",
+        "chapter": "recipes"
+      },
+      {
+        "id": "recipes/express-migration",
+        "source": "recipes/express-migration.md",
+        "title": "Migrating from Express",
+        "chapter": "recipes"
+      },
+      {
+        "id": "faq/serverless",
+        "source": "faq/serverless.md",
+        "title": "Serverless",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/http-adapter",
+        "source": "faq/http-adapter.md",
+        "title": "HTTP adapter",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/keep-alive-connections",
+        "source": "faq/keep-alive-connections.md",
+        "title": "Keep-Alive connections",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/global-prefix",
+        "source": "faq/global-prefix.md",
+        "title": "Global path prefix",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/raw-body",
+        "source": "faq/raw-body.md",
+        "title": "Raw body",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/hybrid-application",
+        "source": "faq/hybrid-application.md",
+        "title": "Hybrid application",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/multiple-servers",
+        "source": "faq/multiple-servers.md",
+        "title": "HTTPS & multiple servers",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/request-lifecycle",
+        "source": "faq/request-lifecycle.md",
+        "title": "Request lifecycle",
+        "chapter": "faq"
+      },
+      {
+        "id": "faq/common-errors",
+        "source": "faq/errors.md",
+        "title": "Common errors",
+        "chapter": "faq"
+      }
+    ]
+  }
+}

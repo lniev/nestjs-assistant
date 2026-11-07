@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --ignore-scripts
+
+      - name: Client bundle is up to date
+        run: |
+          node build.mjs --out /tmp/client.js
+          cmp /tmp/client.js client.js
+
+      - name: Client bundle smoke test
+        run: node scripts/smoke.mjs
+
+      - name: Virtual NestJS runtime test
+        run: node host/playground-runtime.test.mjs
+
+      - name: Code module / version store test
+        run: node host/playground-projects.test.mjs
+
+      - name: Verify every playground module boots
+        run: node scripts/verify-modules.mjs --jobs=2

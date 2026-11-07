@@ -1,0 +1,338 @@
+[
+  {
+    "id": "recipes/socket-activation",
+    "titleZh": "套接字激活",
+    "summary": "套接字激活让 systemd 等服务管理器先监听端口，收到首个连接后再启动应用，并把监听中的 socket 交给它；启动或重启期间到达的连接会在内核队列中等待而不是被拒绝。适合低频的内部工具、管理面板或开发机服务，配合空闲退出可做到无人访问时零内存占用，代价是首次请求要等冷启动。",
+    "sections": [
+      {
+        "heading": "systemd 单元",
+        "text": "写 my-app.socket（ListenStream=3000）与同名 service 单元（ExecStart、Restart=on-failure），执行 systemctl enable --now my-app.socket，systemd 会在首个连接时拉起服务；ExecStart 必须直接启动 node，否则 LISTEN_PID 不匹配。"
+      },
+      {
+        "heading": "应用侧监听",
+        "text": "在 main.ts 判断 LISTEN_FDS 为 '1' 且 LISTEN_PID 等于 String(process.pid)，成立时 app.listen({ fd: 3 })，否则退回端口监听。Express/Node 适配器把选项透传给 server.listen()，但类型只接受端口，需要 as any；Fastify 适配器直接支持 fd。"
+      },
+      {
+        "heading": "空闲退出与注意事项",
+        "text": "用 exitWhenIdle 统计底层 server 的 in-flight 请求，空闲超时后 app.close() 并 process.exit(0)。应使用 Restart=on-failure 而非 always，否则空闲退出后会被立刻拉起；WebSocket、定时任务与队列消费者需另行处理。"
+      }
+    ],
+    "keyPoints": [
+      "systemd 通过 socket 单元持有端口，在首个连接时启动 service 单元",
+      "`ListenStream=3000` 声明监听端口，`WantedBy=sockets.target` 启用",
+      "`ExecStart` 必须直接运行 node，否则 `LISTEN_PID` 不匹配",
+      "`LISTEN_FDS` 为 1 且 `LISTEN_PID` 匹配时 `listen({ fd: 3 })`",
+      "Express 与 Node 适配器的 `listen()` 类型只接受端口，需 `as any` 断言",
+      "`exitWhenIdle` 空闲后 `app.close()` 再 `process.exit(0)`",
+      "systemd 侧用 `Restart=on-failure`，避免空闲退出后被立即重启"
+    ],
+    "snippets": [
+      {
+        "title": "main.ts 监听传入的 socket",
+        "lang": "typescript",
+        "code": "async function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.enableShutdownHooks();\n\n  // Set by systemd when it passes the listening socket to this process\n  const activated =\n    process.env.LISTEN_FDS === '1' &&\n    process.env.LISTEN_PID === String(process.pid);\n\n  if (activated) {\n    await app.listen({ fd: 3 } as any);\n    exitWhenIdle(app, 5 * 60_000);\n  } else {\n    await app.listen(process.env.PORT ?? 3000);\n  }\n}\n\nawait bootstrap();"
+      },
+      {
+        "title": "systemd 单元文件",
+        "lang": "bash",
+        "code": "# /etc/systemd/system/my-app.socket\n[Socket]\nListenStream=3000\n\n[Install]\nWantedBy=sockets.target\n\n# /etc/systemd/system/my-app.service\n[Service]\nWorkingDirectory=/srv/my-app\nExecStart=/usr/bin/node dist/main.js\nRestart=on-failure"
+      }
+    ],
+    "api": [
+      "app.listen()",
+      "LISTEN_FDS",
+      "LISTEN_PID",
+      "enableShutdownHooks()",
+      "app.close()",
+      "systemctl"
+    ],
+    "pitfalls": [
+      "用 npm start 或脚本包一层时 LISTEN_PID 不匹配，会退化成端口监听并 EADDRINUSE",
+      "Restart=always 会让空闲退出的服务立刻被重新拉起，内存并未释放",
+      "exitWhenIdle 只统计 HTTP 请求，长连接 WebSocket 不会阻止退出"
+    ],
+    "enterprise": "适合内部工具、预览环境与低频管理面：默认关闭、按需激活，配合空闲退出与编译缓存降低冷启动；核心在线服务仍应常驻，并用健康检查避免被误判为空闲。",
+    "related": [
+      "faq/serverless",
+      "application/task-scheduling",
+      "deployment",
+      "faq/keep-alive-connections"
+    ]
+  },
+  {
+    "id": "recipes/express-migration",
+    "titleZh": "从 Express 迁移",
+    "summary": "这一页给出把 Express 应用迁到 Nest 的两条路径：让 Nest 跑在现有 Express 实例上逐路由迁移，或一次性新建应用整体替换。内容包括 Express 5 前置要求、ExpressAdapter 复用、中间件与守卫的执行边界、逐条翻译对照表，以及那些不会报错却会改变行为的状态码、错误结构与查询解析差异。",
+    "sections": [
+      {
+        "heading": "共用 Express 实例",
+        "text": "导出 createLegacyApp() 并去掉 app.listen，用 new ExpressAdapter(createLegacyApp()) 创建 Nest 应用。Express 先注册的中间件与路由先执行，Nest 在 listen() 时追加路由与 404 处理器，因此能看到 req.user。"
+      },
+      {
+        "heading": "执行边界",
+        "text": "Express 的中间件对两类路由都生效，但 Express 错误处理器只处理 Express 路由；Nest 的 MiddlewareConsumer、app.use()、守卫、拦截器、管道与过滤器只作用于 Nest 路由。必须删除 Express 的 catch-all 404，否则它会截获 Nest 路由。"
+      },
+      {
+        "heading": "无声的行为差异",
+        "text": "Express 的 POST 默认 200，Nest 默认 201；错误结构变成 statusCode/message/error；Express 4 的查询解析、无 body 时的 req.body、返回字符串的 Content-Type 都不同。用全局异常过滤器与 bodyParser: false 等手段保持旧行为。"
+      }
+    ],
+    "keyPoints": [
+      "需 Express 5；Express 4 在 Nest 启动时即失败，可先用 codemod 升级",
+      "`new ExpressAdapter(createLegacyApp())` 复用现有实例",
+      "删除 Express 的 catch-all 404 处理器，保留其 error handler",
+      "Express 中间件先于 Nest 路由执行，Nest 守卫可读取 req.user",
+      "POST 默认状态码从 200 变为 201，必要时加 `@HttpCode(200)`",
+      "错误结构变为 `{ statusCode, message, error }`，用全局过滤器保持旧格式",
+      "`router.param()` 在路由中间件前执行，Nest 中守卫先于管道"
+    ],
+    "snippets": [
+      {
+        "title": "在 Express 实例上启动",
+        "lang": "typescript",
+        "code": "export function createLegacyApp() {\n  const app = express();\n  app.use(express.json());\n  app.use(authenticate); // sets req.user\n  app.use('/orders', ordersRouter);\n  app.use(errorHandler);\n  // app.listen(3000); <- Nest listens from now on\n  return app;\n}\n\nasync function bootstrap() {\n  const app = await NestFactory.create(\n    AppModule,\n    new ExpressAdapter(createLegacyApp()),\n  );\n  await app.listen(process.env.PORT ?? 3000);\n}\n\nawait bootstrap();"
+      },
+      {
+        "title": "全局过滤器保持旧错误结构",
+        "lang": "typescript",
+        "code": "@Catch()\nexport class ApiExceptionFilter implements ExceptionFilter {\n  catch(exception: unknown, host: ArgumentsHost) {\n    const http = host.switchToHttp();\n    const response = http.getResponse<Response>();\n\n    if (exception instanceof ApiError) {\n      return response\n        .status(exception.status)\n        .json({ error: { code: exception.code, message: exception.message } });\n    }\n    if (exception instanceof NotFoundException) {\n      return response.status(404).json({ error: { code: 'NOT_FOUND' } });\n    }\n    return response.status(500).json({ error: { code: 'INTERNAL' } });\n  }\n}"
+      }
+    ],
+    "api": [
+      "ExpressAdapter",
+      "@HttpCode()",
+      "@Redirect()",
+      "@Res()",
+      "@UseInterceptors()",
+      "FileInterceptor",
+      "app.enableCors()",
+      "useStaticAssets()"
+    ],
+    "pitfalls": [
+      "残留 catch-all 404 会先于 Nest 路由执行，导致新接口全部 404",
+      "忘记 `@HttpCode(200)`，原先返回 200 的 POST 变成 201",
+      "Express 4 的 req.query 解析不同，需开启 extended parser"
+    ],
+    "enterprise": "大团队按路由渐进迁移：Nest 与 Express 同端口共存，先用契约测试锁定状态码与错误体，再逐个替换 router，把鉴权中间件逐步改写为守卫，最后移除 legacy 目录。",
+    "related": [
+      "recipes/fastify-migration",
+      "middleware",
+      "exception-filters",
+      "faq/global-prefix"
+    ]
+  },
+  {
+    "id": "faq/serverless",
+    "titleZh": "Serverless",
+    "summary": "这一页讨论 Nest 在 Serverless（AWS Lambda、Cloud Functions 等）上的冷启动问题与优化手段：对比 Express、标准 Nest、standalone 与裸 Node 的启动耗时，说明 webpack 打包可把启动降到几十毫秒；再讲运行期优化（避免阻塞启动的异步 provider、用 LazyModuleLoader 按需加载）以及与 Serverless Framework、Lambda 的集成方式。",
+    "sections": [
+      {
+        "heading": "冷启动与基准",
+        "text": "冷启动包含下载代码、初始化运行时与执行代码，语言与依赖数量影响很大。官方基准显示未打包时 Express 约 7.9ms、Nest 加 platform-express 约 197ms、standalone 约 112ms；用 webpack 打包全部依赖后分别降到 6.8ms、81.5ms 与 31.9ms。"
+      },
+      {
+        "heading": "运行期优化",
+        "text": "异步 provider 会阻塞启动，只为部分调用服务的连接（如 Redis 缓存）不应声明为 async provider；用 LazyModuleLoader 在具体请求或 worker 分支里按需加载模块，可让不需要该能力的调用获得更短冷启动。"
+      },
+      {
+        "heading": "集成方式",
+        "text": "入口文件取决于云厂商与端点形态：HTTP 全功能可用 NestFactory.create() 加 app.init() 加 @codegenie/serverless-express 的 configure()；只需执行代码则用 createApplicationContext()，但它不套用守卫、拦截器与管道。"
+      }
+    ],
+    "keyPoints": [
+      "冷启动耗时取决于语言、依赖数量与是否打包，可用 webpack 显著缩短",
+      "webpack 打包后 standalone 约 32ms、HTTP 应用约 81.5ms",
+      "避免把仅部分场景使用的连接声明为异步 provider，拖慢每次冷启动",
+      "`LazyModuleLoader.load()` 可按请求或 worker 类型延迟加载模块",
+      "HTTP 场景用 `app.init()` 加 `@codegenie/serverless-express`",
+      "仅执行逻辑时用 `NestFactory.createApplicationContext()`，但不含增强器",
+      "打包需把 `handler` 导出，`output.library.type` 设为 `commonjs2`"
+    ],
+    "snippets": [
+      {
+        "title": "Lambda handler 集成",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { configure } from '@codegenie/serverless-express';\nimport type { Callback, Context, Handler } from 'aws-lambda';\nimport { AppModule } from './app.module.js';\n\nlet server: Handler;\n\nasync function bootstrap(): Promise<Handler> {\n  const app = await NestFactory.create(AppModule);\n  await app.init();\n  const expressApp = app.getHttpAdapter().getInstance();\n  return configure({ app: expressApp });\n}\n\nexport const handler: Handler = async (event, context, callback) => {\n  server = server ?? (await bootstrap());\n  return server(event, context, callback);\n};"
+      },
+      {
+        "title": "按需加载模块",
+        "lang": "typescript",
+        "code": "if (request.method === RequestMethod[RequestMethod.GET]) {\n  // only invocations that need caching pay for loading it\n  const { CacheModule } = await import('./cache.module.js');\n  const moduleRef = await this.lazyModuleLoader.load(() => CacheModule);\n\n  const { CacheService } = await import('./cache.service.js');\n  const cacheService = moduleRef.get(CacheService);\n\n  return cacheService.get(ENDPOINT_KEY);\n}"
+      }
+    ],
+    "api": [
+      "NestFactory.createApplicationContext()",
+      "LazyModuleLoader",
+      "configure()",
+      "app.init()",
+      "output.library.type",
+      "serverless-offline"
+    ],
+    "pitfalls": [
+      "把数据库或 Redis 连接写成异步 provider，每次冷启动都多等数秒",
+      "用 createApplicationContext() 却期待守卫与拦截器生效，实际不会套用",
+      "webpack 未导出 handler 或未设 commonjs2，Lambda 找不到入口"
+    ],
+    "enterprise": "为每个函数只装配必要模块，入口用 standalone 或延迟加载控制启动成本；在 CI 中测量冷启动并纳入预算，打包时保留类名以免 class-validator 失效。",
+    "related": [
+      "standalone-applications",
+      "fundamentals/lazy-loading-modules",
+      "fundamentals/async-providers",
+      "deployment"
+    ]
+  },
+  {
+    "id": "faq/http-adapter",
+    "titleZh": "HTTP 适配器",
+    "summary": "每个平台相关的 HTTP 服务实例（Express、Fastify、Node）都被包装在 adapter 中，并作为全局 provider 注册。应用上下文之外用 app.getHttpAdapter() 取；上下文之内注入 HttpAdapterHost，再读其 httpAdapter 属性拿到真正的适配器。适配器可 getInstance() 取底层库实例，也可订阅 listen$ 或读 listening 判断监听状态。",
+    "sections": [
+      {
+        "heading": "上下文之外获取",
+        "text": "调用 app.getHttpAdapter() 即可拿到当前适配器，其类型是 ExpressAdapter、FastifyAdapter 或 NodeAdapter 之一，均继承 AbstractHttpAdapter，可用于直接操作底层 server 或注册原生中间件。"
+      },
+      {
+        "heading": "注入适配器宿主",
+        "text": "HttpAdapterHost 从 @nestjs/core 导入，可像普通 provider 一样构造注入。它本身不是适配器，需要读 adapterHost.httpAdapter；再用 getInstance() 取得 Express 或 Fastify 的原始实例。"
+      },
+      {
+        "heading": "监听事件",
+        "text": "HttpAdapterHost 暴露 listen$ 流，在服务器开始监听时触发，适合做启动后的注册与告警；另有 listening 布尔属性可直接判断当前是否处于监听状态，无需自己维护标志位。"
+      }
+    ],
+    "keyPoints": [
+      "adapter 把 Express、Fastify、Node 等平台实例统一包装为全局 provider",
+      "上下文之外用 `app.getHttpAdapter()` 获取适配器",
+      "上下文之内注入 `HttpAdapterHost`，再读 `httpAdapter` 属性",
+      "`getInstance()` 返回底层库实例，可直接调用其 API",
+      "`listen$` 在服务器开始监听时发出事件",
+      "`listening` 布尔属性表示当前是否已监听"
+    ],
+    "snippets": [
+      {
+        "title": "获取适配器与底层实例",
+        "lang": "typescript",
+        "code": "const app = await NestFactory.create(AppModule);\nconst httpAdapter = app.getHttpAdapter();\nconst instance = httpAdapter.getInstance();\n\nexport class CatsService {\n  constructor(private adapterHost: HttpAdapterHost) {}\n\n  onListening() {\n    const adapter = this.adapterHost.httpAdapter;\n    return this.adapterHost.listen$;\n  }\n}"
+      }
+    ],
+    "api": [
+      "HttpAdapterHost",
+      "getHttpAdapter()",
+      "httpAdapter",
+      "getInstance()",
+      "listen$",
+      "listening",
+      "AbstractHttpAdapter"
+    ],
+    "pitfalls": [
+      "把 HttpAdapterHost 当成适配器直接调用方法，实际要读 httpAdapter",
+      "适配器类型随平台变化，按 Express 或 Fastify 写死逻辑会在换平台时失效"
+    ],
+    "enterprise": "把底层 server 操作（注册原生中间件、读取 socket、优雅关闭）收敛到单个适配器封装服务，避免业务代码直接依赖 Express 或 Fastify，让切换适配器时只改一处。",
+    "related": [
+      "faq/multiple-servers",
+      "faq/keep-alive-connections",
+      "middleware",
+      "faq/raw-body"
+    ]
+  },
+  {
+    "id": "faq/keep-alive-connections",
+    "titleZh": "Keep-Alive 连接",
+    "summary": "Nest 的 HTTP 适配器默认等响应结束才关闭应用，但带有 Connection: Keep-Alive 的请求可能长时间占用连接，导致进程不退出，常见于开启 enableShutdownHooks() 并用 --watch 的开发场景。在创建应用时设置 forceCloseConnections: true 可强制关闭这些连接，Express、Fastify 与 Node 适配器都支持该选项。",
+    "sections": [
+      {
+        "heading": "现象与原因",
+        "text": "应用在收到关闭信号后仍不退出，通常是因为 keep-alive 连接尚未释放。适配器默认等待响应完成，长连接与空闲连接会让关闭流程挂起，开发时 --watch 重启尤其明显。"
+      },
+      {
+        "heading": "启用方式",
+        "text": "在 NestFactory.create(AppModule, { forceCloseConnections: true }) 中开启，之后正常 listen 即可。多数用户不需要该选项，只在应用退出行为不符合预期时考虑。"
+      },
+      {
+        "heading": "适配器支持",
+        "text": "Express、Fastify 与 Node 适配器都实现该应用级选项。Fastify 需要 NestJS v12.1 及以上，更早版本应改用 FastifyAdapter 构造参数中的同名服务端选项。"
+      }
+    ],
+    "keyPoints": [
+      "keep-alive 连接会让应用在关闭时等待，表现为进程不退出",
+      "`forceCloseConnections: true` 会强制关闭这些连接",
+      "常见于启用 `enableShutdownHooks()` 且以 `--watch` 运行的开发环境",
+      "大多数应用不需要该选项，只在退出异常时启用",
+      "Express、Fastify、Node 三种适配器都支持",
+      "Fastify 需 v12.1 以上，更早版本用 FastifyAdapter 的服务端选项"
+    ],
+    "snippets": [
+      {
+        "title": "强制关闭 keep-alive",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule, {\n    forceCloseConnections: true,\n  });\n  await app.listen(process.env.PORT ?? 3000);\n}\n\nawait bootstrap();"
+      }
+    ],
+    "api": [
+      "forceCloseConnections",
+      "NestFactory.create()",
+      "enableShutdownHooks()"
+    ],
+    "pitfalls": [
+      "把该选项当作默认配置，可能在请求处理中强行断开连接",
+      "Fastify 低版本只认适配器参数，应用级选项不会生效"
+    ],
+    "enterprise": "仅在开发容器或需要快速滚动重启的服务中开启，生产环境应先确认负载均衡的 idle timeout 与连接排空策略，避免强断正在处理的请求。",
+    "related": [
+      "faq/multiple-servers",
+      "fundamentals/lifecycle-events",
+      "faq/http-adapter"
+    ]
+  },
+  {
+    "id": "faq/global-prefix",
+    "titleZh": "全局路径前缀",
+    "summary": "调用 setGlobalPrefix() 可为 HTTP 应用的所有路由加统一前缀，常用作 API 版本或网关路径。exclude 选项可按 path 与 method 排除路由，也可只传字符串排除该路径的所有方法。页面还说明被排除路由的未匹配请求如何进入异常过滤器，以及 Express 与 Fastify 在处理前缀外路径时的差异。",
+    "sections": [
+      {
+        "heading": "设置与排除",
+        "text": "app.setGlobalPrefix('v1') 给全部路由加前缀；exclude 支持 { path, method } 对象或字符串。path 支持 path-to-regexp 参数与命名通配符，裸 * 已废弃；命名通配符至少匹配一段，排除 /health 本身需用 health/{*splat}。"
+      },
+      {
+        "heading": "未匹配请求",
+        "text": "被排除的路由注册在前缀之外，但 Nest 仍处理其未匹配请求：例如只声明 GET /health，POST /health 会走异常过滤器并返回标准 404。Express 适配器对既不在前缀下、也未被排除的路径直接返回默认 404 页，Fastify 则全部交给 Nest。"
+      },
+      {
+        "heading": "与版本控制配合",
+        "text": "启用 URI versioning 时，排除匹配会忽略版本段，被排除的路由仍保留版本。例如 defaultVersion 为 '1'、exclude 为 ['health'] 时，实际访问路径是 /v1/health。"
+      }
+    ],
+    "keyPoints": [
+      "`app.setGlobalPrefix('v1')` 为所有 HTTP 路由加统一前缀",
+      "`exclude` 接受 `{ path, method }` 或字符串，字符串排除所有方法",
+      "`path` 支持 path-to-regexp 参数与命名通配符 `*splat`",
+      "命名通配符至少匹配一段，用 `{*splat}` 才能同时排除父路径",
+      "被排除路由的未匹配请求仍由 Nest 返回标准 404",
+      "Express 对前缀外未匹配路径返回默认 404，Fastify 交给 Nest",
+      "启用 URI versioning 时排除匹配忽略版本段"
+    ],
+    "snippets": [
+      {
+        "title": "带排除项的全局前缀",
+        "lang": "typescript",
+        "code": "import { RequestMethod } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module.js';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.setGlobalPrefix('v1', {\n    exclude: [\n      { path: 'health', method: RequestMethod.GET },\n      'metrics',\n    ],\n  });\n  await app.listen(process.env.PORT ?? 3000);\n}\n\nawait bootstrap();"
+      }
+    ],
+    "api": [
+      "setGlobalPrefix()",
+      "exclude",
+      "RequestMethod",
+      "path-to-regexp"
+    ],
+    "pitfalls": [
+      "exclude 用裸 * 通配符已废弃，且命名通配符不匹配父路径本身",
+      "以为排除后 Nest 不再管该路径，未匹配方法仍返回 Nest 的 404"
+    ],
+    "enterprise": "把全局前缀与 URI 版本策略一起规划，健康检查、指标等基础路径显式 exclude，网关与前端共用同一套前缀约定，避免上线后批量改客户端。",
+    "related": [
+      "http/versioning",
+      "recipes/router-module",
+      "faq/http-adapter"
+    ]
+  }
+]

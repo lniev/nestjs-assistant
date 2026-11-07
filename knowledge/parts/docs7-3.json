@@ -1,0 +1,350 @@
+[
+  {
+    "id": "graphql/extensions",
+    "titleZh": "扩展元数据",
+    "summary": "Extensions 是低层的类型配置扩展能力，允许在字段上附加任意自定义元数据。本章讲解如何用 @Extensions() 装饰器在字段、类与方法上挂载元数据，以及如何在字段中间件中读取 info.parentType 的字段扩展，实现字段级权限等通用方案。",
+    "sections": [
+      {
+        "heading": "附加自定义元数据",
+        "text": "用 @nestjs/graphql 的 @Extensions() 装饰器给字段附加任意数据，例如 @Extensions({ role: Role.ADMIN })。除字段外，它也可用在类级别与方法级别（如查询处理器）上，元数据会写进 schema 类型配置的 extensions，供运行时读取。"
+      },
+      {
+        "heading": "读取扩展做权限控制",
+        "text": "扩展值在运行时通过 info.parentType.getFields()[info.fieldName].extensions 读取。在字段中间件里对比当前用户角色与字段要求的角色，不满足时抛 ForbiddenException 或返回 null 隐藏字段值，就得到一个字段级权限系统。"
+      },
+      {
+        "heading": "组合成自定义装饰器",
+        "text": "把 @Extensions({ role }) 与字段中间件放进 applyDecorators 组合成 Auth 装饰器，一次声明权限要求与校验逻辑，避免在每个业务字段重复配置，也让权限声明集中可审计。"
+      }
+    ],
+    "keyPoints": [
+      "@Extensions() 可在字段、类与方法上附加任意自定义元数据。",
+      "扩展值写入 schema 字段的 extensions，供运行时读取。",
+      "字段中间件通过 info.parentType 与 info.fieldName 读取字段扩展。",
+      "用扩展元数据把字段所需角色与调用者角色对比，实现字段级权限。",
+      "配合 applyDecorators 可把 @Extensions 与中间件合成自定义装饰器。"
+    ],
+    "snippets": [
+      {
+        "title": "附加字段扩展元数据",
+        "lang": "typescript",
+        "code": "import { Extensions, Field, ObjectType } from '@nestjs/graphql';\n\nenum Role {\n  USER = 'USER',\n  ADMIN = 'ADMIN',\n}\n\n@ObjectType()\nexport class User {\n  @Field()\n  name: string;\n\n  @Field()\n  @Extensions({ role: Role.ADMIN })\n  password: string;\n}"
+      },
+      {
+        "title": "读取扩展做权限校验",
+        "lang": "typescript",
+        "code": "import { FieldMiddleware, MiddlewareContext, NextFn } from '@nestjs/graphql';\nimport { ForbiddenException } from '@nestjs/common';\n\nexport const checkRoleMiddleware: FieldMiddleware = async (\n  ctx: MiddlewareContext,\n  next: NextFn,\n) => {\n  const info = ctx.info!;\n  const { extensions } = info.parentType.getFields()[info.fieldName];\n  const userRole = Role.USER;\n  if (userRole !== extensions.role) {\n    throw new ForbiddenException('Insufficient permissions');\n  }\n  return next();\n};"
+      }
+    ],
+    "api": [
+      "@Extensions()",
+      "FieldMiddleware",
+      "MiddlewareContext",
+      "NextFn",
+      "applyDecorators"
+    ],
+    "pitfalls": [
+      "扩展只是元数据，不会被自动执行，必须由守卫、拦截器或字段中间件读取使用。",
+      "扩展元数据写入 schema 后全局共享，不要在其中放请求级可变状态。",
+      "字段级权限要注意 fieldResolverEnhancers 与中间件的执行时机，避免绕过校验。"
+    ],
+    "enterprise": "字段级权限系统适合用 extensions 承载角色、租户、脱敏级别等声明，由统一中间件读取执行，业务字段只声明元数据。",
+    "related": [
+      "graphql/field-middleware",
+      "graphql/other-features",
+      "graphql/directives"
+    ]
+  },
+  {
+    "id": "graphql/cli-plugin",
+    "titleZh": "CLI 插件",
+    "summary": "GraphQL CLI 插件在编译期读取 AST，自动补齐 @Field 等装饰器与描述，减少样板代码。本章讲解插件自动完成的工作与文件名后缀约定、在 nest-cli.json 中启用并配置的方式、webpack 与 ts-loader 及 SWC 场景的接入，以及 ts-jest 下常见的编译问题与修复。",
+    "sections": [
+      {
+        "heading": "插件能力与文件名约定",
+        "text": "插件自动为输入类型、对象类型和参数类的属性补 @Field（除非用 @HideField），按 ? 设置 nullable，按类型设置 type 并支持数组；开启 introspectComments 后还会用注释生成描述。只有文件名以 .input.ts、.args.ts、.entity.ts、.model.ts 结尾才会被分析。"
+      },
+      {
+        "heading": "启用与配置插件",
+        "text": "在 nest-cli.json 的 compilerOptions.plugins 中加入 '@nestjs/graphql' 即可启用；需要自定义时改为对象形式并设置 options，支持 typeFileNameSuffix、introspectComments、esmCompatible 与 debug 四个选项，插件本身是 opt-in 的。"
+      },
+      {
+        "heading": "打包与测试集成",
+        "text": "webpack 自定义配置下通过 ts-loader 的 getCustomTransformers 接入 plugin.before；SWC 构建需要开启 --type-check，monorepo 中先生成 metadata 再传入 GraphQLModule；ts-jest 下要新增 transformer 文件并写入 astTransformers。"
+      }
+    ],
+    "keyPoints": [
+      "插件在编译期通过 AST 自动补齐 @Field 装饰器与 nullable、type 元数据。",
+      "文件名需以 .input.ts、.args.ts、.entity.ts 或 .model.ts 结尾。",
+      "在 nest-cli.json 的 compilerOptions.plugins 加入插件。",
+      "introspectComments 打开后会用注释自动生成字段描述。",
+      "SWC 构建需开启类型检查或先生成 metadata 文件。",
+      "ts-jest 下需手动注册 astTransformer，否则 schema 编译报错。"
+    ],
+    "snippets": [
+      {
+        "title": "启用并配置 CLI 插件",
+        "lang": "json",
+        "code": "{\n  \"collection\": \"@nestjs/schematics\",\n  \"sourceRoot\": \"src\",\n  \"compilerOptions\": {\n    \"plugins\": [\n      {\n        \"name\": \"@nestjs/graphql\",\n        \"options\": {\n          \"typeFileNameSuffix\": [\".input.ts\", \".args.ts\"],\n          \"introspectComments\": true\n        }\n      }\n    ]\n  }\n}"
+      },
+      {
+        "title": "ts-jest 的 AST 转换器",
+        "lang": "typescript",
+        "code": "const transformer = require('@nestjs/graphql/plugin');\n\nmodule.exports.name = 'nestjs-graphql-transformer';\nmodule.exports.version = 1;\n\nmodule.exports.factory = (cs) => {\n  return transformer.before(\n    {},\n    cs.program,\n  );\n};\n\nexport {};"
+      }
+    ],
+    "api": [
+      "@nestjs/graphql/plugin",
+      "typeFileNameSuffix",
+      "introspectComments",
+      "esmCompatible",
+      "debug",
+      "@HideField"
+    ],
+    "pitfalls": [
+      "文件名后缀不在约定列表内时插件不会处理，需配置 typeFileNameSuffix 扩展。",
+      "插件是 opt-in 的，普通 tsc 构建不会自动启用，需通过 CLI 或 loader 配置。",
+      "ts-jest 下未注册 astTransformer，e2e 会报 Object type 缺字段错误。"
+    ],
+    "enterprise": "中大型项目建议默认开启插件并统一文件后缀规范，如 author.model.ts、create-author.input.ts，减少手写 @Field 与描述造成的漂移。",
+    "related": [
+      "graphql/resolvers",
+      "recipes/swc",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "graphql/generating-sdl",
+    "titleZh": "生成 SDL",
+    "summary": "有时需要在不起服务、不连数据库的情况下拿到代码优先模式生成的 GraphQL SDL。本章讲解用 GraphQLSchemaBuilderModule 与 GraphQLSchemaFactory 手动构建 schema 并打印，构造选项与标量参数如何传入，以及联邦子图场景下用 printSubgraphSchema 保留联邦指令。",
+    "sections": [
+      {
+        "heading": "手动生成 schema",
+        "text": "创建 GraphQLSchemaBuilderModule 应用并 init，取出 GraphQLSchemaFactory，调用 create() 传入解析器类数组，再用 printSchema 打印 SDL。整个过程不监听端口，适合在 CI 中做 schema 校验或生成产物。"
+      },
+      {
+        "heading": "生成参数与选项",
+        "text": "create() 第二个参数可传标量类数组；第三个参数接收与 buildSchemaOptions 相同的选项对象，其中 skipCheck 跳过 schema 校验，orphanedTypes 用于强制包含未被根类型引用、但仍需出现在 schema 中的类。"
+      },
+      {
+        "heading": "联邦子图的 SDL",
+        "text": "GraphQLSchemaFactory 不认识 Apollo Federation，输出会丢掉联邦指令。需要打印子图 SDL 时改用 @apollo/subgraph 的 printSubgraphSchema；Federation 2 还需自行在输出前拼接 @link 指令，并通过 orphanedTypes 传入仅被 _entities 引用的实体。"
+      }
+    ],
+    "keyPoints": [
+      "GraphQLSchemaBuilderModule 可在不启动服务的情况下构建 schema。",
+      "create() 接收解析器类数组并返回 GraphQLSchema。",
+      "create() 可传标量类与 skipCheck、orphanedTypes 选项。",
+      "printSchema 把 schema 打印成 SDL，常用于 CI 校验与产物生成。",
+      "联邦子图要用 printSubgraphSchema 才能保留 @key、@external 等指令。",
+      "Federation 2 输出前需手动拼接 @link 声明，否则会被当作 Federation 1。"
+    ],
+    "snippets": [
+      {
+        "title": "生成并打印 schema",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport {\n  GraphQLSchemaBuilderModule,\n  GraphQLSchemaFactory,\n} from '@nestjs/graphql';\nimport { printSchema } from 'graphql';\n\nasync function generateSchema() {\n  const app = await NestFactory.create(GraphQLSchemaBuilderModule);\n  await app.init();\n\n  const gqlSchemaFactory = app.get(GraphQLSchemaFactory);\n  const schema = await gqlSchemaFactory.create(\n    [RecipesResolver, AuthorsResolver],\n    [DurationScalar],\n    { skipCheck: true },\n  );\n  console.log(printSchema(schema));\n}"
+      },
+      {
+        "title": "打印联邦子图 SDL",
+        "lang": "typescript",
+        "code": "import { printSubgraphSchema } from '@apollo/subgraph';\n\nconst schema = await gqlSchemaFactory.create([UsersResolver], {\n  orphanedTypes: [User],\n});\n\nconst sdl = `extend schema @link(\n  url: \"https://specs.apollo.dev/federation/v2.14\",\n  import: [\"@key\", \"@shareable\", \"@external\"]\n)\n\n${printSubgraphSchema(schema)}`;\n\nconsole.log(sdl);"
+      }
+    ],
+    "api": [
+      "GraphQLSchemaBuilderModule",
+      "GraphQLSchemaFactory",
+      "printSchema",
+      "printSubgraphSchema",
+      "skipCheck",
+      "orphanedTypes"
+    ],
+    "pitfalls": [
+      "create() 的标量参数与选项参数顺序不能颠倒，选项要放在标量数组之后。",
+      "Federation 2 输出漏掉 @link 会被当成 Federation 1 子图，需手动拼接。",
+      "仅被 _entities 引用的实体不会被根类型遍历到，必须用 orphanedTypes 显式传入。"
+    ],
+    "enterprise": "在 CI 中运行 schema 生成脚本并提交 SDL 产物，可在合并前发现破坏性变更；联邦子图交给 rover 做契约校验前先确保联邦指令完整。",
+    "related": [
+      "graphql/quick-start",
+      "graphql/federation",
+      "graphql/cli-plugin"
+    ]
+  },
+  {
+    "id": "graphql/sharing-models",
+    "titleZh": "共享模型",
+    "summary": "代码优先的模型类带有大量 GraphQL 装饰器，直接复用到前端会引入无意义的依赖与运行时开销。本章介绍 Nest 提供的 model shim：它把装饰器替换为空实现，通过 package.json 的 browser 导出条件自动生效，并说明打包器不识别该条件时如何配置别名。",
+    "sections": [
+      {
+        "heading": "问题与 shim 机制",
+        "text": "前后端共享 TypeScript 模型可以避免重复定义，但代码优先模型上的 @ObjectType()、@Field() 等装饰器对前端没有意义，还会拖慢打包与运行。@nestjs/graphql 提供 shim，把原始装饰器替换成惰性空实现，前端即可安全复用模型类。"
+      },
+      {
+        "heading": "启用方式与别名配置",
+        "text": "包通过 package.json 的 browser 导出条件暴露 shim，webpack（web target）等识别 browser 条件的打包器会自动选用。若打包器不识别该条件，需要配置别名把 @nestjs/graphql 指向 dist/extra/graphql-model-shim。"
+      }
+    ],
+    "keyPoints": [
+      "代码优先模型带 GraphQL 装饰器，直接用于前端会增加体积与运行开销。",
+      "model shim 把 GraphQL 装饰器替换为空实现，保留类型定义供前端复用。",
+      "@nestjs/graphql 通过 browser 导出条件暴露 shim，浏览器打包自动生效。",
+      "打包器不识别 browser 条件时，用 alias 指向 graphql-model-shim 路径。",
+      "TypeORM 也提供类似的 model shim，思路都是把后端装饰器前端化。"
+    ],
+    "snippets": [
+      {
+        "title": "配置 webpack 别名指向 shim",
+        "lang": "typescript",
+        "code": "import path from 'node:path';\n\nexport default {\n  resolve: {\n    alias: {\n      '@nestjs/graphql': path.resolve(\n        __dirname,\n        '../node_modules/@nestjs/graphql/dist/extra/graphql-model-shim',\n      ),\n    },\n  },\n};"
+      }
+    ],
+    "api": [
+      "@nestjs/graphql",
+      "browser 导出条件",
+      "graphql-model-shim"
+    ],
+    "pitfalls": [
+      "直接 alias @nestjs/graphql 会影响后端构建，别名只应配置在前端打包配置中。",
+      "前端若实际调用 GraphQL 服务，仍需单独引入 Apollo 等客户端，shim 不替代客户端。",
+      "shim 只是让装饰器不生效，模型类中的后端方法与依赖仍需剥离。"
+    ],
+    "enterprise": "全栈 TypeScript 项目可把领域模型抽成共享包：后端正常使用装饰器，前端通过 shim 复用类型与校验常量，减少接口类型重复定义。",
+    "related": [
+      "graphql/quick-start",
+      "data/typeorm",
+      "graphql/cli-plugin"
+    ]
+  },
+  {
+    "id": "graphql/other-features",
+    "titleZh": "其他特性",
+    "summary": "GraphQL 中的鉴权与副作用处理可复用 Nest 的跨平台能力。本章讲解如何在 GraphQL 中使用守卫、拦截器、管道与异常过滤器，如何用 GqlExecutionContext 与 GqlArgumentsHost 转换执行上下文，如何在字段解析器上启用增强器，以及如何实现自定义 GraphQL 驱动。",
+    "sections": [
+      {
+        "heading": "守卫、拦截器与管道",
+        "text": "GraphQL 与 REST 一样可以使用标准的守卫、拦截器、过滤器与管道，鉴权逻辑可写成守卫并在 REST 与 GraphQL 间复用。区别在执行上下文：需用 GqlExecutionContext.create(context) 转换后读取 getArgs()、getContext() 等 GraphQL 参数。"
+      },
+      {
+        "heading": "异常过滤器与自定义装饰器",
+        "text": "异常过滤器通过 GqlArgumentsHost.create(host) 转换 ArgumentsHost 并实现 GqlExceptionFilter；自定义参数装饰器同样用 GqlExecutionContext.create(ctx) 读取上下文，例如从 context.user 取当前用户注入处理器参数。"
+      },
+      {
+        "heading": "字段级增强器",
+        "text": "默认只在顶层 @Query()/@Mutation() 执行增强器；给 GqlModuleOptions 设置 fieldResolverEnhancers 后 @ResolveField() 也会执行。要注意性能，可用 context.getType 与 info.parentType 判断字段级调用。"
+      },
+      {
+        "heading": "自定义驱动",
+        "text": "继承 AbstractGraphQLDriver 并实现 start 与 stop 即可接入任意 GraphQL 库；start 被调用时 schema 已生成，可从 options.schema 取用，也可通过 httpAdapterHost 取得 HTTP 适配器并注册路由。"
+      }
+    ],
+    "keyPoints": [
+      "GraphQL 复用标准守卫、拦截器、管道与异常过滤器，可与 REST 共享逻辑。",
+      "用 GqlExecutionContext.create() 转换执行上下文后读取 GraphQL 参数。",
+      "异常过滤器用 GqlArgumentsHost.create() 转换 ArgumentsHost。",
+      "自定义装饰器通过 GqlExecutionContext 读取 context 中的用户信息。",
+      "fieldResolverEnhancers 能让增强器在字段解析器上执行，但要注意性能。",
+      "继承 AbstractGraphQLDriver 实现 start/stop 接入任意库。"
+    ],
+    "snippets": [
+      {
+        "title": "GraphQL 守卫与执行上下文",
+        "lang": "typescript",
+        "code": "import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';\nimport { GqlExecutionContext } from '@nestjs/graphql';\n\n@Injectable()\nexport class AuthGuard implements CanActivate {\n  canActivate(context: ExecutionContext): boolean {\n    const gqlContext = GqlExecutionContext.create(context);\n    const user = gqlContext.getContext().user;\n    return Boolean(user);\n  }\n}"
+      },
+      {
+        "title": "实现自定义 GraphQL 驱动",
+        "lang": "typescript",
+        "code": "import { AbstractGraphQLDriver, GqlModuleOptions } from '@nestjs/graphql';\nimport { createHandler } from 'graphql-http/lib/use/express';\n\nclass ExpressGraphQLDriver extends AbstractGraphQLDriver {\n  async start(options: GqlModuleOptions<any>): Promise<void> {\n    const { httpAdapter } = this.httpAdapterHost;\n    httpAdapter.use(\n      '/graphql',\n      createHandler({ schema: options.schema! }),\n    );\n  }\n\n  async stop() {}\n}"
+      }
+    ],
+    "api": [
+      "GqlExecutionContext",
+      "GqlArgumentsHost",
+      "GqlExceptionFilter",
+      "fieldResolverEnhancers",
+      "AbstractGraphQLDriver",
+      "GqlModuleOptions",
+      "ExecutionContext",
+      "ArgumentsHost"
+    ],
+    "pitfalls": [
+      "直接从 ExecutionContext 取 request 会拿不到 GraphQL 参数，必须先转换上下文。",
+      "字段级增强器会随字段调用成倍触发，开启后应跳过不必要的逻辑。",
+      "异常过滤器不能在 GraphQL 中操作原生 response 对象，否则会抛错。"
+    ],
+    "enterprise": "把鉴权、审计等横切逻辑实现为跨平台守卫与拦截器，在 REST 与 GraphQL 间复用；字段级增强器只对少数昂贵字段单独开启。",
+    "related": [
+      "graphql/quick-start",
+      "fundamentals/execution-context",
+      "security/authorization",
+      "graphql/field-middleware"
+    ]
+  },
+  {
+    "id": "graphql/federation",
+    "titleZh": "联邦",
+    "summary": "联邦把单体 GraphQL 服务拆成网关与多个子图，每个子图维护部分 schema，网关合并后对客户端暴露统一入口。本章讲解 Apollo 与 Mercurius 两套联邦驱动、子图的 @key 与 @ResolveReference 写法、网关配置，以及 Federation 2 的 @link、@inaccessible 等要点。",
+    "sections": [
+      {
+        "heading": "架构与驱动",
+        "text": "联邦由网关和一个或多个子图组成，schema 按领域分散维护，网关合并成 supergraph。Nest 提供 ApolloFederationDriver、MercuriusFederationDriver 与对应的 ApolloGatewayDriver、MercuriusGatewayDriver，代码优先与架构优先都支持。"
+      },
+      {
+        "heading": "子图实现",
+        "text": "子图用 @key(fields: 'id') 标记实体，解析器用 @ResolveReference() 实现 resolveReference() 响应实体引用。架构优先用 extend type 与 @external 扩展其他服务类型，代码优先用 @Directive('@extends') 与 orphanedTypes。"
+      },
+      {
+        "heading": "网关配置",
+        "text": "Apollo 网关用 IntrospectAndCompose 列出子图名称与 URL，server 字段透传 Apollo Server 选项；Mercurius 网关通过 gateway.services 配置子图列表。两者启动时都会自动发现并合并子图 schema。"
+      },
+      {
+        "heading": "联邦 v2 与隐藏操作",
+        "text": "Federation 2 不再需要 extend Query 与 @external；架构优先要加 @link 导入联邦指令，代码优先把 autoSchemaFile 设为 { federation: 2 }。用 @inaccessible 可把查询、变更或字段排除在 supergraph 之外，但子图仍保留其可执行性。"
+      }
+    ],
+    "keyPoints": [
+      "联邦由网关与多个子图组成，网关把子图 schema 合并为 supergraph。",
+      "子图用 @key(fields: 'id') 声明实体，用 @ResolveReference() 响应引用。",
+      "架构优先用 extend type 与 @external 扩展其他子图的实体。",
+      "代码优先用 @Directive('@extends') 与 orphanedTypes 处理扩展。",
+      "网关分别用 IntrospectAndCompose 与 gateway.services 配置子图。",
+      "Federation 2 用 @link 导入指令，代码优先设 federation: 2。",
+      "Apollo 网关不转发订阅，需要联邦订阅时应改用 Apollo Router。"
+    ],
+    "snippets": [
+      {
+        "title": "子图实体与引用解析",
+        "lang": "typescript",
+        "code": "import { Args, Query, ResolveReference, Resolver } from '@nestjs/graphql';\n\n@Resolver('User')\nexport class UsersResolver {\n  constructor(private usersService: UsersService) {}\n\n  @Query()\n  getUser(@Args('id') id: string) {\n    return this.usersService.findById(id);\n  }\n\n  @ResolveReference()\n  resolveReference(reference: { __typename: string; id: string }) {\n    return this.usersService.findById(reference.id);\n  }\n}"
+      },
+      {
+        "title": "配置 Apollo 联邦网关",
+        "lang": "typescript",
+        "code": "import { IntrospectAndCompose } from '@apollo/gateway';\nimport {\n  ApolloGatewayDriver,\n  ApolloGatewayDriverConfig,\n} from '@nestjs/apollo';\nimport { Module } from '@nestjs/common';\nimport { GraphQLModule } from '@nestjs/graphql';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot<ApolloGatewayDriverConfig>({\n      driver: ApolloGatewayDriver,\n      gateway: {\n        supergraphSdl: new IntrospectAndCompose({\n          subgraphs: [\n            { name: 'users', url: 'http://user-service/graphql' },\n            { name: 'posts', url: 'http://post-service/graphql' },\n          ],\n        }),\n      },\n    }),\n  ],\n})\nexport class AppModule {}"
+      }
+    ],
+    "api": [
+      "ApolloFederationDriver",
+      "MercuriusFederationDriver",
+      "ApolloGatewayDriver",
+      "@ResolveReference()",
+      "@key",
+      "@external",
+      "IntrospectAndCompose",
+      "@inaccessible"
+    ],
+    "pitfalls": [
+      "Apollo 网关不转发订阅，需要联合订阅时应改用 Apollo Router 等方案。",
+      "Mercurius 对 Federation 2 支持不完整，采用前要确认子图库的兼容性。",
+      "仅通过 _entities 引用的实体不会出现在根类型中，代码优先要放进 orphanedTypes。"
+    ],
+    "enterprise": "按领域边界拆分联邦子图，由独立团队维护并各自发布；网关统一做鉴权与流量治理，子图契约用 rover 在 CI 中校验兼容性。",
+    "related": [
+      "graphql/quick-start",
+      "graphql/generating-sdl",
+      "graphql/directives",
+      "graphql/plugins"
+    ]
+  }
+]

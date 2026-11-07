@@ -1,0 +1,70 @@
+{
+  "id": "s7-4",
+  "itemId": "s7-4",
+  "stageId": "s7",
+  "stageIndex": 7,
+  "itemIndex": 4,
+  "stageTitleZh": "企业级架构与可靠性",
+  "titleZh": "微服务拆分与消息一致性",
+  "title": "微服务拆分与消息一致性",
+  "level": "L4",
+  "goal": "按业务能力拆分服务，用 request-response 与 event 两种通信，用 outbox 保证消息不丢。",
+  "practice": "在操练场启动两个服务，用 ClientProxy.send 与 emit 对比两种模式。",
+  "deliverable": "订单与通知两个服务、outbox 投递与死信处理",
+  "accept": "下单后通知最终送达，数据库回滚时消息不发出，重启不丢",
+  "minutes": 300,
+  "pageIds": [
+    "microservices/basics",
+    "reliability/outbox",
+    "microservices/kafka"
+  ],
+  "summary": "单进程版「订单服务 + 通知服务」：订单与 outbox 同事务写入，提交后用内存消息代理 emit order.created，通知服务按 messageId 幂等消费、失败进死信；/orders/:id/notification-preview 演示 send 请求-响应。/orders/rollback-demo 验证回滚时消息不发出。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "expect": 201
+    },
+    {
+      "method": "GET",
+      "path": "/outbox",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/notifications",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/dead-letters",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/1/notification-preview",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/orders/rollback-demo",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/notifications/fail",
+      "expect": 200
+    }
+  ]
+}

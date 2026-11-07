@@ -1,0 +1,55 @@
+{
+  "id": "s4-1",
+  "itemId": "s4-1",
+  "stageId": "s4",
+  "stageIndex": 4,
+  "itemIndex": 1,
+  "stageTitleZh": "数据、配置与缓存",
+  "titleZh": "ORM 接入与数据建模",
+  "title": "ORM 接入与数据建模",
+  "level": "L3",
+  "goal": "用 TypeORM 或 Prisma 接入数据库，建立实体、仓储层与迁移，隔离控制器与持久化细节。",
+  "practice": "在操练场把内存仓储换成 ORM 仓储，保持 service 方法签名不变。",
+  "deliverable": "User/Order 实体、Repository 与初始迁移脚本",
+  "accept": "空库执行迁移后可 CRUD，重启应用数据不丢",
+  "minutes": 300,
+  "pageIds": [
+    "data/overview",
+    "data/typeorm",
+    "data/prisma"
+  ],
+  "summary": "这套默认代码演示 ORM 分层：实体（User/Order + 列元数据）→ 内存 DataSource（模拟迁移与种子）→ Repository 接口/实现 → Service → Controller，接口与持久化细节隔离，把内存仓储换成 TypeORM 仓储时 Service 方法签名不变。可改：给列表加分页、把 AppModule 里的 useFactory 换成 useClass，或删掉必填字段看 400/409 处理。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users/1/orders",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "expect": 400
+    }
+  ]
+}

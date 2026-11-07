@@ -1,0 +1,64 @@
+{
+  "id": "s5-2",
+  "itemId": "s5-2",
+  "stageId": "s5",
+  "stageIndex": 5,
+  "itemIndex": 2,
+  "stageTitleZh": "认证授权与安全",
+  "titleZh": "授权：策略与 RBAC",
+  "title": "授权：策略与 RBAC",
+  "level": "L3",
+  "goal": "用策略对象或守卫表达谁能对哪条记录做什么，区分 401 与 403，并把检查写进测试。",
+  "practice": "在操练场用两个用户互访订单，验证返回 403 而非带信息的 404。",
+  "deliverable": "订单资源的 owner、staff、admin 三级访问策略",
+  "accept": "越权访问他人订单返回 403，未登录返回 401，策略有单测",
+  "minutes": 240,
+  "pageIds": [
+    "security/authorization",
+    "fundamentals/execution-context"
+  ],
+  "summary": "订单资源的 owner/staff/admin 三级 RBAC：AuthenticatedGuard 负责 401，RolesGuard + @Roles() 管路由级 403，OrderPolicy 管记录级 403（订单不存在才 404）。GET /orders/policy-spec 直接执行策略单测。用 ?as=1/2/9/10 模拟不同身份。",
+  "defaultFile": "src/orders/order.policy.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/policy-spec",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders?as=1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/1?as=1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/orders/2?as=1",
+      "expect": 403
+    },
+    {
+      "method": "GET",
+      "path": "/orders/2",
+      "expect": 401
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders?as=2",
+      "expect": 403
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders?as=9",
+      "expect": 200
+    }
+  ]
+}

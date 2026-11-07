@@ -1,0 +1,44 @@
+{
+  "id": "s4-3",
+  "itemId": "s4-3",
+  "stageId": "s4",
+  "stageIndex": 4,
+  "itemIndex": 3,
+  "stageTitleZh": "数据、配置与缓存",
+  "titleZh": "配置与环境治理",
+  "title": "配置与环境治理",
+  "level": "L3",
+  "goal": "用 @nestjs/config 做多环境配置、命名空间与启动校验，密钥只从环境变量注入。",
+  "practice": "在操练场删掉 .env 必填项，确认启动阶段就报错而非首请求崩溃。",
+  "deliverable": ".env.example、配置校验 schema 与启动失败用例",
+  "accept": "缺少 DATABASE_URL 时启动立即失败并指出变量名",
+  "minutes": 300,
+  "pageIds": [
+    "application/configuration",
+    "deployment"
+  ],
+  "summary": "手写 @nestjs/config 等价物：ENV_SCHEMA 定义必填/默认/类型规则（URL、正整数、枚举、密钥最小长度），ConfigModule 在模块初始化阶段校验环境变量并注入全局 ConfigService，校验失败应用直接启动中止并逐条列出变量名。可改：删掉 PLAYGROUND_ENV_PRESET 的 DATABASE_URL 或把 JWT_SECRET 改短，点「运行」观察启动失败；POST /config/validate 可严格校验传入变量。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/config",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/config/check",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/config/validate",
+      "expect": 400
+    }
+  ]
+}

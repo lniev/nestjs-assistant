@@ -1,0 +1,44 @@
+{
+  "id": "s1-5",
+  "itemId": "s1-5",
+  "stageId": "s1",
+  "stageIndex": 1,
+  "itemIndex": 5,
+  "stageTitleZh": "心智模型与最小可运行",
+  "titleZh": "请求生命周期与中间件",
+  "title": "请求生命周期与中间件",
+  "level": "L1",
+  "goal": "按 middleware→guards→interceptors→pipes 顺序画出请求生命周期，并用中间件打上请求 ID。",
+  "practice": "在操练场加 X-Request-Id 中间件，再用拦截器写进响应头。",
+  "deliverable": "requestId 中间件与一张请求生命周期时序图",
+  "accept": "同一次请求的日志与异常响应都带同一个 requestId",
+  "minutes": 120,
+  "pageIds": [
+    "faq/request-lifecycle",
+    "middleware"
+  ],
+  "summary": "请求生命周期实战：RequestIdMiddleware 给每个请求分配 requestId，RequestIdInterceptor 把它写进 X-Request-Id 响应头并统计耗时，全局异常过滤器让 400 错误响应也带上同一个 requestId。请求 /lifecycle 可看到完整组件顺序，/boom 可对比异常链路。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/lifecycle",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/echo/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/boom",
+      "expect": 400
+    }
+  ]
+}

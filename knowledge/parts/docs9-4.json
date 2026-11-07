@@ -1,0 +1,188 @@
+[
+  {
+    "id": "openapi/decorators",
+    "titleZh": "装饰器",
+    "summary": "所有 OpenAPI 装饰器都以 Api 前缀命名，以区别于核心装饰器。该页用一张表列出全部导出装饰器及其可应用层级：方法或控制器级、仅控制器级、仅方法级与模型级，方便快速判断某个装饰器该写在控制器、路由方法还是 DTO 属性上，避免层级误用。",
+    "sections": [
+      {
+        "heading": "装饰器分组",
+        "text": "按用途分组：分组与操作用 @ApiTags()、@ApiOperation()；请求与响应用 @ApiBody()、@ApiQuery()、@ApiParam()、@ApiResponse() 及状态码简写；鉴权用 @ApiSecurity()、@ApiBearerAuth()、@ApiOAuth2() 等。"
+      },
+      {
+        "heading": "作用层级",
+        "text": "方法或控制器级：@ApiTags()、@ApiSecurity()、@ApiResponse()、@ApiQuery()、@ApiParam()；仅控制器：@ApiExcludeController()；仅方法：@ApiBody()、@ApiOperation()、@ApiExcludeEndpoint()。"
+      },
+      {
+        "heading": "模型级与简写",
+        "text": "模型级只有 @ApiProperty()、@ApiPropertyOptional()、@ApiResponseProperty()、@ApiHideProperty()、@ApiSchema()；@ApiExtraModels() 可写在方法、控制器或模型上。各状态码简写响应装饰器的作用层级与 @ApiResponse() 相同。"
+      }
+    ],
+    "keyPoints": [
+      "OpenAPI 装饰器统一以 Api 前缀命名，与核心装饰器区分",
+      "@ApiTags()、@ApiSecurity()、@ApiResponse() 可用于方法或控制器",
+      "@ApiExcludeController() 只能用于控制器，@ApiBody() 只能用于方法",
+      "模型级有 @ApiProperty()、@ApiHideProperty()、@ApiSchema()",
+      "@ApiExtraModels() 可作用于方法、控制器或模型",
+      "各状态码简写响应装饰器与 @ApiResponse() 层级一致"
+    ],
+    "snippets": [
+      {
+        "title": "按层级使用装饰器",
+        "lang": "typescript",
+        "code": "import {\n  ApiBearerAuth,\n  ApiBody,\n  ApiExcludeEndpoint,\n  ApiOperation,\n  ApiProperty,\n  ApiSchema,\n  ApiTags,\n} from '@nestjs/swagger';\n\n@ApiTags('cats')\n@ApiBearerAuth()\n@Controller('cats')\nexport class CatsController {\n  @Post()\n  @ApiOperation({ summary: 'Create a cat' })\n  @ApiBody({ type: CreateCatDto })\n  create(@Body() dto: CreateCatDto) {}\n\n  @Get('internal')\n  @ApiExcludeEndpoint()\n  internal() {}\n}\n\n@ApiSchema({ name: 'CreateCatRequest' })\nexport class CreateCatDto {\n  @ApiProperty()\n  name: string;\n}"
+      }
+    ],
+    "api": [
+      "@ApiTags()",
+      "@ApiOperation()",
+      "@ApiBody()",
+      "@ApiResponse()",
+      "@ApiProperty()",
+      "@ApiExcludeController()",
+      "@ApiExcludeEndpoint()",
+      "@ApiExtraModels()",
+      "@ApiSecurity()",
+      "@ApiWebhook()"
+    ],
+    "pitfalls": [
+      "把 @ApiExcludeEndpoint() 用在控制器上不会生效，它只作用于方法",
+      "@ApiProperty() 只能标注模型属性，用在参数上不会生成文档",
+      "忘记 @ApiExtraModels() 时被引用模型可能不出现在 components 中"
+    ],
+    "enterprise": "团队约定装饰器使用规范：控制器级放 @ApiTags() 与鉴权，方法级放 @ApiOperation() 与响应，模型级放 @ApiProperty()，并用 ESLint 检查层级误用。",
+    "related": [
+      "openapi/operations",
+      "openapi/types-and-parameters",
+      "openapi/security",
+      "openapi/other-features"
+    ]
+  },
+  {
+    "id": "openapi/cli-plugin",
+    "titleZh": "CLI 插件",
+    "summary": "TypeScript 的元数据反射无法得知类有哪些属性、是否可选，Swagger CLI 插件在编译期基于 AST 自动补全 @ApiProperty()、required、type 与 enum、default、响应装饰器与注释描述，减少大量样板代码。本章讲插件启用方式、DTO 文件后缀约定、注释内省、插件选项，以及与 SWC、ts-jest 的配合。",
+    "sections": [
+      {
+        "heading": "插件能做什么",
+        "text": "插件会自动给 DTO 属性加 @ApiProperty()（除非用了 @ApiHideProperty()）、按问号设置 required、按类型设置 type 与 enum、按默认值设置 default、按 class-validator 装饰器补校验规则，并在开启 introspectComments 时从注释生成描述与示例。"
+      },
+      {
+        "heading": "启用与文件约定",
+        "text": "在 nest-cli.json 的 compilerOptions.plugins 中加入 '@nestjs/swagger'，或用 { name, options } 形式配置。插件只分析后缀为 .dto.ts 与 .entity.ts 的文件，可用 dtoFileNameSuffix 调整；改选项后要删除 dist 重新构建。"
+      },
+      {
+        "heading": "注释内省",
+        "text": "introspectComments 为 true 时，DTO 的 JSDoc 转成 description 与 example，控制器注释转成 @ApiOperation 的 summary；@remarks 生成 description，@deprecated 与 @throws 也会被识别。"
+      },
+      {
+        "heading": "构建工具集成",
+        "text": "SWC 构建需开启类型检查（nest start -b swc --type-check），monorepo 需生成 metadata 再用 SwaggerModule.loadPluginMetadata() 加载；ts-jest e2e 需自建 AST transformer 并写进 jest 配置，不生效时清缓存。"
+      }
+    ],
+    "keyPoints": [
+      "插件在编译期为 DTO 属性补 @ApiProperty() 与 required、type",
+      "只处理 .dto.ts 与 .entity.ts，可用 dtoFileNameSuffix 调整",
+      "classValidatorShim 开启后复用 class-validator 约束",
+      "introspectComments: true 时由 JSDoc 生成描述与示例",
+      "改插件选项后必须删除 dist 重新构建",
+      "SWC 构建需 --type-check，monorepo 用 loadPluginMetadata()",
+      "ts-jest 需配 AST transformer，缓存问题用 --clearCache"
+    ],
+    "snippets": [
+      {
+        "title": "启用插件并配置选项",
+        "lang": "json",
+        "code": "{\n  \"collection\": \"@nestjs/schematics\",\n  \"sourceRoot\": \"src\",\n  \"compilerOptions\": {\n    \"plugins\": [\n      {\n        \"name\": \"@nestjs/swagger\",\n        \"options\": {\n          \"classValidatorShim\": true,\n          \"introspectComments\": true,\n          \"dtoFileNameSuffix\": [\".dto.ts\", \".entity.ts\"],\n          \"skipAutoHttpCode\": false\n        }\n      }\n    ]\n  }\n}"
+      },
+      {
+        "title": "注释生成操作摘要",
+        "lang": "typescript",
+        "code": "export class SomeController {\n  /**\n   * Create a new cat\n   *\n   * @remarks This operation allows you to create a new cat.\n   *\n   * @deprecated\n   * @throws {500} Something went wrong.\n   * @throws {400} Bad Request.\n   */\n  @Post()\n  async create(): Promise<Cat> {}\n}\n\n// 等价于手动写：\n// @ApiOperation({ summary: 'Create a new cat' })"
+      }
+    ],
+    "api": [
+      "@nestjs/swagger",
+      "PluginOptions",
+      "dtoFileNameSuffix",
+      "classValidatorShim",
+      "introspectComments",
+      "skipAutoHttpCode",
+      "esmCompatible",
+      "loadPluginMetadata()",
+      "autoFillEnumName"
+    ],
+    "pitfalls": [
+      "插件只认 .dto.ts 与 .entity.ts 后缀，普通命名文件不会被处理",
+      "插件生成的只是文档注解，运行时校验仍要保留 class-validator",
+      "改完插件配置没删 dist，旧产物会让人误以为插件没生效"
+    ],
+    "enterprise": "中等以上项目默认开启插件与 introspectComments，DTO 只写类型与校验装饰器；把选项固化到 nest-cli.json 模板，避免各服务文档风格漂移。",
+    "related": [
+      "openapi/types-and-parameters",
+      "openapi/mapped-types",
+      "recipes/swc",
+      "openapi/introduction"
+    ]
+  },
+  {
+    "id": "openapi/other-features",
+    "titleZh": "其他特性",
+    "summary": "本章汇总 Swagger 模块的其余常用能力：用 ignoreGlobalPrefix 忽略全局前缀、用 DocumentBuilder 定义全局参数与全局响应、通过 createDocument() 的 include 选项按模块拆分多份规范并在不同端点提供服务，以及配置 explorer 与 swaggerOptions.urls 在 UI 顶部下拉切换多份文档。",
+    "sections": [
+      {
+        "heading": "全局选项",
+        "text": "ignoreGlobalPrefix: true 让生成的 path 忽略 setGlobalPrefix() 设置的前缀；addGlobalParameters() 为所有路由声明公共参数（如 tenantId header），addGlobalResponse() 为所有端点声明统一响应。"
+      },
+      {
+        "heading": "多份规范",
+        "text": "createDocument(app, config, { include: [CatsModule] }) 只扫描指定模块，配合多次 setup() 可在 /api/cats 与 /api/dogs 分别提供不同 UI，前提是应用本身按模块组织。"
+      },
+      {
+        "heading": "下拉切换",
+        "text": "设置 explorer: true 并配置 swaggerOptions.urls 指向各文档的 JSON 地址，即可在 UI 顶部下拉切换多份规范；urls 必须指向 JSON 格式，其路径由 jsonDocumentUrl 决定。"
+      }
+    ],
+    "keyPoints": [
+      "ignoreGlobalPrefix: true 让文档路径忽略全局前缀",
+      "addGlobalParameters() 声明所有路由共用的参数",
+      "addGlobalResponse() 声明所有路由共用的响应",
+      "createDocument() 的 include 限定模块，实现多份规范",
+      "多次 setup() 可在不同路径提供不同 Swagger UI",
+      "explorer 与 swaggerOptions.urls 实现下拉切换文档"
+    ],
+    "snippets": [
+      {
+        "title": "为不同模块提供多份规范",
+        "lang": "typescript",
+        "code": "const catOptions = new DocumentBuilder()\n  .setTitle('Cats example')\n  .setVersion('1.0')\n  .addTag('cats')\n  .build();\n\nconst catDocumentFactory = () =>\n  SwaggerModule.createDocument(app, catOptions, { include: [CatsModule] });\nSwaggerModule.setup('api/cats', app, catDocumentFactory);\n\nconst dogOptions = new DocumentBuilder()\n  .setTitle('Dogs example')\n  .setVersion('1.0')\n  .addTag('dogs')\n  .build();\n\nconst dogDocumentFactory = () =>\n  SwaggerModule.createDocument(app, dogOptions, { include: [DogsModule] });\nSwaggerModule.setup('api/dogs', app, dogDocumentFactory);"
+      },
+      {
+        "title": "下拉切换多份文档",
+        "lang": "typescript",
+        "code": "SwaggerModule.setup('api', app, documentFactory, {\n  explorer: true,\n  swaggerOptions: {\n    urls: [\n      { name: '1. API', url: 'api/swagger.json' },\n      { name: '2. Cats API', url: 'api/cats/swagger.json' },\n      { name: '3. Dogs API', url: 'api/dogs/swagger.json' },\n    ],\n  },\n  jsonDocumentUrl: '/api/swagger.json',\n});"
+      }
+    ],
+    "api": [
+      "ignoreGlobalPrefix",
+      "addGlobalParameters()",
+      "addGlobalResponse()",
+      "createDocument()",
+      "include",
+      "explorer",
+      "swaggerOptions",
+      "jsonDocumentUrl"
+    ],
+    "pitfalls": [
+      "多份规范要求应用按模块组织，否则 include 过滤不出预期路由",
+      "swaggerOptions.urls 指向 YAML 或错误路径时下拉切换会失败",
+      "ignoreGlobalPrefix 只影响文档路径，不影响运行时真实路由"
+    ],
+    "enterprise": "面向内部与开放平台分别输出多份规范，用 include 按模块裁剪并按环境挂不同路径；公共参数与错误响应用全局声明，减少重复文档代码。",
+    "related": [
+      "openapi/introduction",
+      "openapi/operations",
+      "faq/global-prefix",
+      "openapi/decorators"
+    ]
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "id": "s2-3",
+  "itemId": "s2-3",
+  "stageId": "s2",
+  "stageIndex": 2,
+  "itemIndex": 3,
+  "stageTitleZh": "请求生命周期组件",
+  "titleZh": "拦截器与统一响应",
+  "title": "拦截器与统一响应",
+  "level": "L2",
+  "goal": "用 NestInterceptor 包装响应、记录耗时，并用 RxJS 的 map/tap/catchError 处理返回流。",
+  "practice": "在操练场写 TransformInterceptor，把返回值包进 data 并补上耗时。",
+  "deliverable": "统一响应 { code, data, traceId } 的拦截器与耗时日志",
+  "accept": "所有接口响应结构一致，慢请求日志含方法、路径与毫秒数",
+  "minutes": 180,
+  "pageIds": [
+    "interceptors",
+    "application/serialization"
+  ],
+  "summary": "用两个全局拦截器演示统一响应与耗时日志：TransformInterceptor 把返回值包成 { code, data, traceId, durationMs }，LoggingInterceptor 记录方法/路径/毫秒并在慢请求与异常时告警；含 /slow 与 /boom 两条对照路由。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/slow",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/boom",
+      "expect": 500
+    }
+  ]
+}

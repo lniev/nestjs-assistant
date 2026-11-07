@@ -1,0 +1,332 @@
+[
+  {
+    "id": "application/queues",
+    "titleZh": "队列",
+    "summary": "@nestjs/bullmq（维护模式下的 @nestjs/bull 同理）把 BullMQ 封装成 Nest 模块，用 Redis 持久化任务：BullModule.forRoot() 配置连接，registerQueue() 注册队列，@InjectQueue() 注入队列生产任务，@Processor() 加 WorkerHost 消费，@OnWorkerEvent()/@OnQueueEvent() 监听事件，支持延迟、优先级、重试与独立进程。",
+    "sections": [
+      {
+        "heading": "模块与队列注册",
+        "text": "BullModule.forRoot({ connection }) 注册全局 Redis 配置，registerQueue({ name: 'audio' }) 按名字创建队列，名字同时是注入令牌和装饰器参数。可覆写单个队列的连接，用 registerFlowProducer() 创建流程生产者，或用命名配置让不同队列连到不同的 Redis 实例。"
+      },
+      {
+        "heading": "生产者与任务选项",
+        "text": "@InjectQueue('audio') 注入 Queue 后调用 add(name, data, options) 生产任务，data 必须可序列化。常用选项有 delay、attempts、backoff、priority、removeOnComplete；BullMQ 不再支持 repeat，周期任务改用 upsertJobScheduler()。"
+      },
+      {
+        "heading": "消费者与事件",
+        "text": "@Processor('audio') 装饰的类继承 WorkerHost 并实现 process(job)，在内部按 job.name 分派不同逻辑；请求作用域消费者用 Scope.REQUEST 并通过 JOB_REF 注入当前任务。@OnWorkerEvent 监听 worker 事件，@OnQueueEvent 监听队列事件。"
+      },
+      {
+        "heading": "管理与异步配置",
+        "text": "Queue#pause() 与 resume() 控制消费；forRootAsync()、registerQueueAsync() 支持 useFactory、useClass 异步配置，manualRegistration 关闭自动注册后需调用 BullRegistrar.register()；processors 可在独立进程运行但没有依赖注入。"
+      }
+    ],
+    "keyPoints": [
+      "BullModule.forRoot() 配置 Redis 连接，registerQueue() 注册队列",
+      "@InjectQueue('audio') 注入 Queue，add() 生产任务，数据需可序列化",
+      "任务选项支持 delay、attempts、backoff、priority、removeOnComplete",
+      "@Processor('audio') 加 WorkerHost 消费，按 job.name 分支",
+      "@OnWorkerEvent 与 @OnQueueEvent 分别监听 worker 和队列事件",
+      "forRootAsync()、registerQueueAsync() 支持异步配置",
+      "独立进程处理器没有依赖注入，需自行创建所需依赖"
+    ],
+    "snippets": [
+      {
+        "title": "注册队列并生产任务",
+        "lang": "typescript",
+        "code": "import { Injectable, Module } from '@nestjs/common';\nimport { BullModule, InjectQueue } from '@nestjs/bullmq';\nimport { Queue } from 'bullmq';\n\n@Module({\n  imports: [\n    BullModule.forRoot({ connection: { host: 'localhost', port: 6379 } }),\n    BullModule.registerQueue({ name: 'audio' }),\n  ],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class AudioService {\n  constructor(@InjectQueue('audio') private audioQueue: Queue) {}\n\n  async transcode() {\n    await this.audioQueue.add('transcode', { foo: 'bar' }, { delay: 3000, attempts: 3 });\n  }\n}"
+      },
+      {
+        "title": "消费者与 worker 事件",
+        "lang": "typescript",
+        "code": "import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';\nimport { Job } from 'bullmq';\n\n@Processor('audio')\nexport class AudioConsumer extends WorkerHost {\n  async process(job: Job<any, any, string>): Promise<any> {\n    switch (job.name) {\n      case 'transcode':\n        await job.updateProgress(50);\n        return {};\n      case 'concatenate':\n        return doSomeLogic2();\n      default:\n        throw new Error(`Unknown job: ${job.name}`);\n    }\n  }\n\n  @OnWorkerEvent('active')\n  onActive(job: Job) {\n    console.log(`Processing job ${job.id}`);\n  }\n}"
+      }
+    ],
+    "api": [
+      "BullModule",
+      "@InjectQueue()",
+      "Queue",
+      "@Processor()",
+      "WorkerHost",
+      "@OnWorkerEvent()",
+      "@OnQueueEvent()",
+      "registerQueue()",
+      "forRootAsync()",
+      "JOB_REF"
+    ],
+    "pitfalls": [
+      "BullMQ 的 Queue.add 不再接受 repeat，重复任务要用 upsertJobScheduler",
+      "BullMQ 不支持 @Process(name) 分派，需在 process() 中 switch job.name",
+      "独立进程处理器没有依赖注入，外部依赖需要自己创建"
+    ],
+    "enterprise": "订单、邮件、导出等异步任务统一走 BullMQ，配置 attempts 与 backoff，消费者按 job.name 分派并监听失败事件告警；CPU 密集任务放到独立进程，配合监控观察队列积压与延迟。",
+    "related": [
+      "application/events",
+      "application/task-scheduling",
+      "reliability/outbox"
+    ]
+  },
+  {
+    "id": "application/http-client",
+    "titleZh": "HTTP 客户端",
+    "summary": "@nestjs/http-client 基于 Node.js 内置 fetch 提供可注入的 HTTP 客户端：HttpClientModule.register() 配置 baseUrl、超时、重试与拦截器，forRoot() 设置全应用默认，命名客户端用 @InjectHttpClient() 注入。方法按 HTTP 动词划分并返回 Promise，内置默认重试、错误映射、流式响应与迁移自 Axios 的指南。",
+    "sections": [
+      {
+        "heading": "客户端注册与配置",
+        "text": "HttpClientModule.register({ baseUrl, timeout }) 创建客户端，命名客户端用 @InjectHttpClient('github') 注入。forRoot() 只设全局默认；registerAsync()、forRootAsync() 支持 useFactory、useClass 从配置构建。"
+      },
+      {
+        "heading": "请求与响应",
+        "text": "客户端为每个 HTTP 动词提供 get()、post()、put() 等方法，返回 HttpResponse（含 status、headers、data、url）。params 填充 :name 路径段，query 追加查询参数，json 序列化请求体；responseType 可选 auto、json、text、arrayBuffer、stream。"
+      },
+      {
+        "heading": "超时、重试与错误",
+        "text": "timeout 按每次尝试计时，可用 '5s' 这类时长字符串。重试默认开启，只作用于幂等方法，默认 3 次尝试，指数退避加 full jitter 并遵循 Retry-After。错误分 HttpResponseError、HttpTimeoutError 等，toHttpException() 映射为 502/504 并记录 5xx。"
+      },
+      {
+        "heading": "拦截器与安全",
+        "text": "拦截器可为函数或实现 HttpClientInterceptor 的类，每次尝试运行一次，适合加认证头、记录上游耗时；类拦截器可注入依赖。带 baseUrl 的客户端只请求同源，路径参数自动编码，URL 中的凭据与含换行的头会被拒绝；代理与自定义 TLS 通过 undici dispatcher 配置。"
+      }
+    ],
+    "keyPoints": [
+      "register() 创建客户端，@InjectHttpClient('github') 按名注入",
+      "forRoot() 配置应用默认，registerAsync() 从 ConfigService 构建",
+      "get/post 等返回 Promise<HttpResponse>，params 填路径、query 拼查询",
+      "timeout 支持 '5s' 等时长字符串，按每次尝试单独计时",
+      "重试默认开启且只针对幂等方法，指数退避并遵循 Retry-After",
+      "toHttpException() 把上游错误映射为 502/504 并记录日志",
+      "拦截器每次尝试运行一次，可注入依赖，适合认证与日志"
+    ],
+    "snippets": [
+      {
+        "title": "注册客户端并发出请求",
+        "lang": "typescript",
+        "code": "@Module({\n  imports: [\n    HttpClientModule.forRoot({\n      headers: { 'user-agent': 'cats-service/1.0' },\n      timeout: '10s',\n    }),\n    HttpClientModule.register({\n      name: 'github',\n      baseUrl: 'https://api.github.com',\n      headers: { accept: 'application/vnd.github+json' },\n      retry: { attempts: 4 },\n    }),\n  ],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class ReposService {\n  constructor(@InjectHttpClient('github') private readonly github: HttpClient) {}\n\n  async findAll(org: string): Promise<Repo[]> {\n    const { data } = await this.github.get<Repo[]>('/orgs/:org/repos', {\n      params: { org },\n      query: { type: 'public', sort: 'updated' },\n    });\n    return data;\n  }\n}"
+      },
+      {
+        "title": "拦截器注入认证头",
+        "lang": "typescript",
+        "code": "import { Injectable } from '@nestjs/common';\nimport type { HttpHandler, HttpClientInterceptor, HttpRequest } from '@nestjs/http-client';\n\n@Injectable()\nexport class GithubAuthInterceptor implements HttpClientInterceptor {\n  constructor(private readonly tokens: GithubTokenService) {}\n\n  async intercept(request: HttpRequest, next: HttpHandler): Promise<Response> {\n    request.headers.set('authorization', `Bearer ${await this.tokens.getToken()}`);\n    return next(request);\n  }\n}\n\n@Module({\n  imports: [\n    HttpClientModule.register({\n      name: 'github',\n      baseUrl: 'https://api.github.com',\n      interceptors: [GithubAuthInterceptor],\n    }),\n  ],\n})\nexport class ReposModule {}"
+      }
+    ],
+    "api": [
+      "HttpClientModule",
+      "HttpClient",
+      "@InjectHttpClient()",
+      "HttpResponse",
+      "HttpClientInterceptor",
+      "toHttpException()",
+      "registerAsync()",
+      "forRoot()"
+    ],
+    "pitfalls": [
+      "GET 或 HEAD 请求带 body 会直接抛错，json 与 body 只能二选一",
+      "重试默认开启且会沿调用链成倍放大，调用自有服务时应设 retry: false",
+      "类型参数只描述 data 不做运行时校验，外部 API 响应需自行校验"
+    ],
+    "enterprise": "所有出站 HTTP 用命名客户端，baseUrl、超时与重试从配置注入；统一异常过滤器用 toHttpException() 映射 502/504，拦截器记录上游耗时与请求路径，避免多层重试叠加。",
+    "related": [
+      "application/configuration",
+      "reliability/resilience",
+      "observability/distributed-tracing"
+    ]
+  },
+  {
+    "id": "application/i18n",
+    "titleZh": "国际化",
+    "summary": "@nestjs/i18n 把响应、异常、校验消息和 GraphQL 字段翻译成请求语言：I18nModule.forRoot() 注册 JSON 目录与 locale 解析器，中间件在每个请求解析一次 locale 并存入 AsyncLocalStorage，单例服务通过 I18nService.t() 直接翻译；还提供校验管道、数字日期格式化、ICU 消息与目录热重载。",
+    "sections": [
+      {
+        "heading": "目录与模块注册",
+        "text": "翻译按语言放在 JSON 目录，文件名即命名空间。I18nModule.forRoot() 配置 defaultLocale、supportedLocales、fallbacks、loader 与 resolvers，模块默认全局；中间件在守卫前解析一次 locale，并设置 Content-Language 与 Vary。"
+      },
+      {
+        "heading": "翻译与类型安全",
+        "text": "注入 I18nService 后调用 t(key, { args }) 翻译，自动使用当前请求的 locale，单例服务不用接触请求对象；用 declare module '@nestjs/i18n' 把英文目录类型注册到 I18nTypes 后，键名在编译期受检查。后台任务要显式传 locale，或把调用包进 I18nContext.run()。"
+      },
+      {
+        "heading": "异常与校验本地化",
+        "text": "抛异常时用 t('orders.notFound') 生成已翻译文本。I18nValidationPipe 替换 ValidationPipe，未写 message 的装饰器按 validation.<约束名> 查目录，i18nValidationMessage() 可指定键；Zod 用 I18nStandardSchemaValidationPipe。"
+      },
+      {
+        "heading": "格式化与缺失键策略",
+        "text": "formatNumber()、formatDate() 包装 Intl 并按 locale 格式化。missingKey 决定缺失键策略：开发与 CI 用 'throw'，生产用 'fallback'；watch 支持开发期热重载。GraphQL 字段在 ResolveField 中翻译，微服务与网关由拦截器解析 locale。"
+      }
+    ],
+    "keyPoints": [
+      "I18nModule.forRoot() 配置 defaultLocale 等核心选项",
+      "解析器按顺序取第一个匹配：query、header、Accept-Language、cookie",
+      "I18nService.t(key, { args }) 在单例服务里翻译当前请求的 locale",
+      "declare module 注册目录类型后，翻译键名在编译期受检查",
+      "I18nValidationPipe 与 i18nValidationMessage() 本地化校验消息",
+      "Standard Schema 用 I18nStandardSchemaValidationPipe",
+      "missingKey 与 watch 控制缺失键策略和目录热重载"
+    ],
+    "snippets": [
+      {
+        "title": "注册模块并翻译响应",
+        "lang": "typescript",
+        "code": "import { AcceptLanguageLocaleResolver, HeaderLocaleResolver, I18nModule, I18nService, JsonI18nLoader, QueryLocaleResolver } from '@nestjs/i18n';\n\n@Module({\n  imports: [\n    I18nModule.forRoot({\n      defaultLocale: 'en',\n      supportedLocales: ['en', 'pl', 'de'],\n      fallbacks: { 'de-AT': 'de' },\n      loader: new JsonI18nLoader({ path: join(import.meta.dirname, 'i18n') }),\n      resolvers: [\n        new QueryLocaleResolver('lang'),\n        new HeaderLocaleResolver('x-lang'),\n        new AcceptLanguageLocaleResolver(),\n      ],\n    }),\n  ],\n})\nexport class AppModule {}\n\n@Injectable()\nexport class OrdersService {\n  constructor(private readonly i18nService: I18nService) {}\n\n  confirm(order: Order) {\n    return this.i18nService.t('orders.confirmed', {\n      args: { id: order.id, items: this.describeItems(order) },\n    });\n  }\n}"
+      },
+      {
+        "title": "本地化异常与校验消息",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class OrdersService {\n  constructor(private readonly i18nService: I18nService) {}\n\n  findOne(id: number): Order {\n    const order = this.orders.find((item) => item.id === id);\n    if (!order) {\n      throw new NotFoundException(this.i18nService.t('orders.notFound', { args: { id } }));\n    }\n    return order;\n  }\n}\n\nexport class OrderItemDto {\n  @IsInt()\n  @Max(10, { message: i18nValidationMessage('orders.tooManyItems') })\n  quantity: number;\n}"
+      }
+    ],
+    "api": [
+      "I18nModule",
+      "I18nService",
+      "I18nContext",
+      "t()",
+      "I18nValidationPipe",
+      "I18nStandardSchemaValidationPipe",
+      "i18nValidationMessage()",
+      "JsonI18nLoader",
+      "@CurrentLocale()"
+    ],
+    "pitfalls": [
+      "t() 不传 locale 时依赖请求上下文，cron、队列和邮件必须显式传",
+      "生产应把 missingKey 设为 'fallback'，开发与 CI 用 'throw' 及早暴露缺失键",
+      "GraphQL 用全局前缀时中间件不覆盖 /graphql，需加 useGlobalPrefix"
+    ],
+    "enterprise": "前后端语言列表保持一致，按领域拆分 JSON 命名空间并注册类型；后台任务与邮件显式传 locale，CI 跑目录一致性测试，开发环境用 watch 支持运营热更新文案。",
+    "related": [
+      "application/validation",
+      "application/mail",
+      "graphql/quick-start"
+    ]
+  },
+  {
+    "id": "application/mail",
+    "titleZh": "邮件",
+    "summary": "@nestjs/mail 提供可注入的邮件类：render() 返回主题、模板与上下文，内置引擎转义 HTML 模板并可替换为 Handlebars；传输器支持 SMTP、Resend、Postmark、SendGrid、SES 以及开发用的文件与日志传输，测试用 InMemoryMailTransport。配合 outbox 在事务提交后发送，具备重试、幂等键、死信与本地化能力。",
+    "sections": [
+      {
+        "heading": "模块与邮件类",
+        "text": "MailModule.forRoot({ transport, templates, from }) 注册模块，transport 决定投递方式，开发用 FileMailTransport 写 .eml；templates 用 FileTemplateEngine 渲染 HTML。邮件类实现 Mailable，render() 算好数据后发送。"
+      },
+      {
+        "heading": "模板与附件",
+        "text": "模板语法是 Handlebars 子集：双花括号自动转义、三花括号原样插入，支持 #if、#unless、#each、partials 与注释。附件用 content 或 path 提供，cid 可把图片内联进 HTML；mailer.render() 只渲染不发送，可用于预览路由；纯文本部分由 HTML 自动派生。"
+      },
+      {
+        "heading": "事务后投递与可靠性",
+        "text": "在请求里直接发信会遇到 dual-write 问题：可能丢信，也可能让已提交的订单因邮件失败而报错。正确做法是把 order.placed 与订单写进同一 outbox 事务，再由 @OnOutboxMessage 处理器发送；idempotencyKey 防止重投重复，retry: false 把重试交给 outbox，永久错误进入死信表。"
+      },
+      {
+        "heading": "传输器与本地化",
+        "text": "SmtpTransport 支持 STARTTLS、XOAUTH2、连接池与 DKIM；Resend、Postmark、SendGrid、SES 用 fetch 直连 API，无需 SDK。模板按 locale 选择，主题与发票文件名来自 @nestjs/i18n 目录，发送时要显式传 locale。"
+      }
+    ],
+    "keyPoints": [
+      "MailModule.forRoot() 配置 transport、templates 与 from",
+      "邮件类实现 Mailable<TData>，render() 返回主题、模板与上下文",
+      "FileTemplateEngine 渲染模板与 layout，双花括号自动转义",
+      "附件用 content 或 path，cid 让图片内联进 HTML",
+      "事务提交后经 outbox 发送，idempotencyKey 保证重投不重复",
+      "SmtpTransport 支持 STARTTLS、XOAUTH2、连接池与 DKIM",
+      "InMemoryMailTransport 让测试断言邮件内容与链接"
+    ],
+    "snippets": [
+      {
+        "title": "定义邮件类并发送",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class OrderConfirmationMail implements Mailable<OrderConfirmation> {\n  render({ order, customer }: OrderConfirmation) {\n    const price = (cents: number) => `$${(cents / 100).toFixed(2)}`;\n    return {\n      subject: `Your order #${order.number}`,\n      template: 'order-confirmation',\n      context: {\n        customer,\n        items: order.items.map((item) => ({\n          name: item.name,\n          quantity: item.quantity,\n          price: price(item.price * item.quantity),\n        })),\n        total: price(order.total),\n        orderUrl: `${SHOP_URL}/orders/${order.id}`,\n      },\n    };\n  }\n}\n\nawait this.mailer.send(OrderConfirmationMail, {\n  to: { name: customer.name, address: customer.email },\n  data: { order, customer },\n});"
+      },
+      {
+        "title": "outbox 处理器发送邮件",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class OrderMailsHandler {\n  constructor(\n    private readonly mailer: Mailer,\n    private readonly customersRepository: CustomersRepository,\n  ) {}\n\n  @OnOutboxMessage('order.placed', { consumer: 'order-confirmation-mail' })\n  async sendConfirmation(order: Order, { message, signal }: OutboxHandlerContext) {\n    const customer = await this.customersRepository.findById(order.customerId);\n    if (!customer) {\n      throw new NonRetryableMessageError(`Customer ${order.customerId} not found`);\n    }\n    await this.mailer.send(OrderConfirmationMail, {\n      to: { name: customer.name, address: customer.email },\n      data: { order, customer },\n      idempotencyKey: message.id,\n      signal,\n      retry: false,\n    });\n  }\n}"
+      }
+    ],
+    "api": [
+      "MailModule",
+      "Mailable",
+      "Mailer",
+      "FileTemplateEngine",
+      "SmtpTransport",
+      "ResendTransport",
+      "InMemoryMailTransport",
+      "MailEvents",
+      "MailTransport"
+    ],
+    "pitfalls": [
+      "请求内直接发信会丢信或让已提交订单失败，应在事务提交后经 outbox 发送",
+      "FileMailTransport、LogMailTransport 仅用于开发，容器重启会丢文件",
+      "非 ASCII 主题需编码；附件 path 不能来自用户输入，否则会附带任意文件"
+    ],
+    "enterprise": "邮件类集中在 notifications/，模板与 layout 随 assets 打包；事务后经 outbox 投递，幂等键与死信告警必备，SMTP 或 HTTP 供应商按环境切换，发送指标通过 MailEvents 上报。",
+    "related": [
+      "reliability/outbox",
+      "application/i18n",
+      "application/configuration"
+    ]
+  },
+  {
+    "id": "application/file-storage",
+    "titleZh": "文件存储",
+    "summary": "@nestjs/storage 用统一的 disk API 管理文件：LocalDisk、S3Disk 与 InMemoryDisk 都提供 put/get/list/delete、公开 URL 和签名 URL；uploadToDisk() 作为 multer 存储引擎流式落盘并在写入前检测类型与大小，支持私有文件签名下载、移动端直传与多盘隔离，从本地切到 S3/R2 只需改配置。",
+    "sections": [
+      {
+        "heading": "磁盘配置与注入",
+        "text": "用 StorageModule.forRootAsync() 从 ConfigService 构建命名磁盘，如公开 photos 与私有 private。注入有三种：StorageDisk 取默认盘、@InjectDisk('photos') 取命名盘、Storage 按名取盘。LocalDisk 签名 URL 自行校验，S3Disk 返回预签名 URL。"
+      },
+      {
+        "heading": "上传与类型校验",
+        "text": "FileInterceptor 配合 storage: uploadToDisk({ disk, contentTypes }) 把上传流式写入磁盘；引擎读文件头检测类型，不信任客户端 mimetype，并拒绝错误类型与超限大小。@UploadedFile() 得到 StoredUpload，含 key 与 contentType。"
+      },
+      {
+        "heading": "私有文件与签名 URL",
+        "text": "私有盘用 signedUrl(key, { expiresIn, filename }) 发放短时效下载链接，签名覆盖 key、过期时间与文件名，篡改或过期返回 403。开发环境用 serveSignedUrl() 路由自行校验并输出文件，生产环境直接使用 S3 预签名 URL，/files 路由不再参与。"
+      },
+      {
+        "heading": "直传与生产切换",
+        "text": "signedUpload() 为移动端签发直传 URL，签名绑定 content type 与长度；completeUpload() 校验 key 前缀、文件大小与文件头后，再把文件从私有盘复制到公开盘。生产只需把工厂里的 LocalDisk 换成 S3Disk，R2、MinIO、B2 同构，服务和控制器代码不用改。"
+      }
+    ],
+    "keyPoints": [
+      "StorageModule.forRootAsync() 配置命名磁盘，StorageModule 默认全局",
+      "注入 StorageDisk 取默认盘，@InjectDisk('photos') 取命名盘",
+      "uploadToDisk() 作为 multer 引擎流式写入并检测文件头类型",
+      "signedUrl() 生成短时效私有下载链接，S3 上由桶校验",
+      "signedUpload() 支持移动端直传，completeUpload() 校验后转正",
+      "生产用 S3Disk 替换 LocalDisk，业务代码不用改"
+    ],
+    "snippets": [
+      {
+        "title": "配置磁盘并上传照片",
+        "lang": "typescript",
+        "code": "export function createStorageOptions(config: ConfigService): StorageModuleOptions {\n  const appUrl = config.getOrThrow<string>('appUrl');\n  const root = config.getOrThrow<string>('storage.root');\n  return {\n    default: 'private',\n    disks: {\n      photos: new LocalDisk({ root: `${root}/photos`, publicUrl: `${appUrl}/photos` }),\n      private: new LocalDisk({\n        root: `${root}/private`,\n        signedUrls: {\n          baseUrl: `${appUrl}/files`,\n          keys: [config.getOrThrow<string>('storage.signingKey')],\n        },\n      }),\n    },\n  };\n}\n\n@Post('products/:id/photo')\n@UseInterceptors(\n  FileInterceptor('photo', {\n    storage: uploadToDisk({ disk: 'photos', contentTypes: PHOTO_TYPES, cacheControl: PHOTO_CACHE_CONTROL }),\n    limits: { fileSize: MAX_PHOTO_SIZE, files: 1 },\n  }),\n)\nupload(@Param('id') id: string, @UploadedFile() file: StoredUpload | undefined) {\n  if (!file) throw new BadRequestException('Attach the image as the \"photo\" field');\n  return this.photosService.replace(id, file.key);\n}"
+      },
+      {
+        "title": "私有发票的签名下载链接",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class InvoicesService {\n  constructor(\n    private readonly ordersService: OrdersService,\n    private readonly storageDisk: StorageDisk,\n  ) {}\n\n  async downloadUrl(orderId: string) {\n    const order = this.ordersService.findOne(orderId);\n    if (order.status === 'pending') {\n      throw new ConflictException(`Order ${orderId} has not been paid yet`);\n    }\n    const key = `invoices/${order.id}.pdf`;\n    if (!(await this.storageDisk.exists(key))) {\n      await this.storageDisk.put(key, renderInvoice(order), { contentType: 'application/pdf' });\n    }\n    const url = await this.storageDisk.signedUrl(key, {\n      expiresIn: '5m',\n      filename: `invoice-${order.id}.pdf`,\n    });\n    return { url };\n  }\n}"
+      }
+    ],
+    "api": [
+      "StorageModule",
+      "StorageDisk",
+      "LocalDisk",
+      "S3Disk",
+      "InMemoryDisk",
+      "uploadToDisk()",
+      "signedUrl()",
+      "signedUpload()",
+      "serveFile()",
+      "@InjectDisk()"
+    ],
+    "pitfalls": [
+      "不要用客户端声明的 mimetype 判断类型，uploadToDisk 按文件头检测",
+      "生产不能用 LocalDisk，容器文件系统会随实例销毁，应改用 S3 或 R2",
+      "公开与私有文件应分桶分盘，不要给私有桶开公开读"
+    ],
+    "enterprise": "照片、发票、报表分盘管理，公开桶走 CDN，私有桶只发短时效签名链接；上传统一走 uploadToDisk 做类型与大小校验，移动端用直传 URL，生产切 S3 只改配置。",
+    "related": [
+      "http/file-upload",
+      "application/configuration",
+      "security/authorization"
+    ]
+  }
+]

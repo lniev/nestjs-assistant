@@ -1,0 +1,561 @@
+{
+  "titleZh": "企业级 NestJS 开发知识地图",
+  "intro": "企业级 NestJS 不是把接口写通，而是让系统在多人协作、高流量与故障中依然可维护、可观测、可交付。这张地图按工程基础、服务能力、生产保障、交付演进四层组织 12 个领域，每个领域给出实践、成熟度、检查清单与反模式，可作为团队评审与演进的共同自检表。",
+  "layers": [
+    {
+      "id": "foundation",
+      "titleZh": "工程基础层",
+      "description": "模块边界、配置与请求生命周期是所有服务共用的地基，决定代码能否长期演进。"
+    },
+    {
+      "id": "service",
+      "titleZh": "服务能力层",
+      "description": "认证授权、数据、缓存与消息等业务能力，决定系统能承载多少真实业务与流量。"
+    },
+    {
+      "id": "production",
+      "titleZh": "生产保障层",
+      "description": "可靠性、可观测性与安全，决定系统在故障、攻击与流量峰值下是否可控。"
+    },
+    {
+      "id": "delivery",
+      "titleZh": "交付演进层",
+      "description": "契约、测试与交付流水线，决定团队能否持续、可预测、低风险地发布。"
+    }
+  ],
+  "maturity": [
+    {
+      "level": "L1",
+      "titleZh": "能跑",
+      "description": "单体可启动、主流程可用；配置硬编码、无自动化测试、日志靠 console，故障靠重启与人工排查。"
+    },
+    {
+      "level": "L2",
+      "titleZh": "可维护",
+      "description": "模块边界与分层清晰，DTO 校验与统一异常就位，CI 跑 lint 与单测，配置外置且启动校验。"
+    },
+    {
+      "level": "L3",
+      "titleZh": "可观测、可扩展",
+      "description": "结构化日志、链路追踪与健康检查覆盖核心链路；缓存、队列、限流与幂等就位，多实例无状态部署。"
+    },
+    {
+      "level": "L4",
+      "titleZh": "平台化",
+      "description": "模板与脚手架统一，鉴权/韧性/幂等策略即代码，多团队复用模块与契约，容量与故障演练常态化。"
+    }
+  ],
+  "domains": [
+    {
+      "id": "architecture",
+      "titleZh": "架构与模块化",
+      "title": "Architecture & modularization",
+      "layerId": "foundation",
+      "essential": "企业项目最先腐化的是边界：模块互相注入、领域逻辑散落在 controller。清晰的模块划分与依赖方向决定改动成本，也是独立测试、复用与未来拆分服务的前提。",
+      "practices": [
+        {
+          "title": "按业务能力划分模块",
+          "detail": "每个业务能力一个模块，只导出 service 或端口 token，controller 不进 exports；跨模块调用走公开接口，而非直接注入对方 Repository。边界清晰才可独立测试与替换。",
+          "level": "L2",
+          "pageRefs": ["modules", "providers"]
+        },
+        {
+          "title": "依赖倒置隔离外部系统",
+          "detail": "用自定义 provider（useClass/useFactory/useExisting）把支付、对象存储、短信 SDK 藏在端口接口后；领域层只依赖 token，测试时替换为内存实现。",
+          "level": "L3",
+          "pageRefs": ["fundamentals/custom-providers", "fundamentals/injection-scopes"]
+        },
+        {
+          "title": "用动态模块收敛基础设施",
+          "detail": "数据库、缓存、消息等模块统一用 forRoot/forRootAsync 与 register 模式封装连接与选项，选项从 ConfigService 注入；业务模块只 imports，不读 process.env。",
+          "level": "L2",
+          "pageRefs": ["fundamentals/dynamic-modules", "application/configuration"]
+        },
+        {
+          "title": "控制耦合与循环依赖",
+          "detail": "循环依赖先用 forwardRef 止血，再通过抽共享模块或事件解耦消除；ModuleRef 只用于插件式受控查找，不应成为常规取依赖手段。",
+          "level": "L3",
+          "pageRefs": ["fundamentals/circular-dependency", "fundamentals/module-ref"]
+        }
+      ],
+      "checklist": [
+        "模块间是否只通过导出的 provider 或接口通信？",
+        "是否存在跨模块注入 Repository 或 ORM Entity？",
+        "领域模块能否不启动整个 AppModule 单独测试？"
+      ],
+      "antiPatterns": [
+        "所有 controller/service 堆在一个 AppModule，模块只是目录分组。",
+        "用 forwardRef 掩盖本应拆分的双向依赖。"
+      ],
+      "nestApi": ["@Module", "@Global", "DynamicModule", "forRootAsync()", "forwardRef()", "ModuleRef"]
+    },
+    {
+      "id": "configuration",
+      "titleZh": "配置与环境",
+      "title": "Configuration & environments",
+      "layerId": "foundation",
+      "essential": "配置错误是线上事故的高频来源：连错库、关掉鉴权、密钥泄漏。把配置当代码管理——集中读取、启动校验、按环境分层——才能让部署可重复、可审计。",
+      "practices": [
+        {
+          "title": "集中读取与命名空间",
+          "detail": "用 ConfigModule.forRoot({ isGlobal: true, cache: true }) 统一加载，registerAs 按领域分组；业务代码通过 ConfigService.getOrThrow 读取，禁止直接访问 process.env。",
+          "level": "L2",
+          "pageRefs": ["application/configuration"]
+        },
+        {
+          "title": "启动时校验配置",
+          "detail": "用 validate 函数或 Joi/zod schema 校验必填项、类型与取值范围，缺失即启动失败；报错要指出变量名，避免运行到一半才发现配置错。",
+          "level": "L2",
+          "pageRefs": ["application/configuration"]
+        },
+        {
+          "title": "多环境与密钥管理",
+          "detail": "envFilePath 数组按优先级覆盖本地与 CI 配置，生产密钥由密钥管理或编排平台注入；.env 不入库，仓库提供 .env.example 与配置说明。",
+          "level": "L3",
+          "pageRefs": ["application/configuration", "deployment"]
+        }
+      ],
+      "checklist": [
+        "缺少关键变量时进程是否拒绝启动？",
+        "生产密钥是否来自密钥管理而非镜像或仓库？",
+        "配置项是否有默认值、类型与文档？"
+      ],
+      "antiPatterns": [
+        "在 service 里散落 process.env 读取，无法测试与审计。",
+        "把生产密钥提交进仓库或打进镜像层。"
+      ],
+      "nestApi": ["ConfigModule.forRoot()", "ConfigService.getOrThrow()", "registerAs()", "ConfigType", "validate"]
+    },
+    {
+      "id": "request-lifecycle",
+      "titleZh": "请求生命周期与横切",
+      "title": "Request lifecycle & cross-cutting concerns",
+      "layerId": "foundation",
+      "essential": "同一请求会穿过中间件、守卫、拦截器、管道与异常过滤器。企业项目要把日志、错误、审计、上下文这些横切逻辑收敛到固定位置，否则每个接口重复实现且行为不一致。",
+      "practices": [
+        {
+          "title": "统一异常出口",
+          "detail": "全局 ExceptionFilter 用 @Catch() 兜底，把 HttpException 与未知异常映射为统一错误体（code/message/traceId），生产环境不返回堆栈；用 APP_FILTER 注册以支持 DI。",
+          "level": "L2",
+          "pageRefs": ["exception-filters", "faq/request-lifecycle"]
+        },
+        {
+          "title": "拦截器承载横切逻辑",
+          "detail": "耗时、审计、响应包装放 Interceptor，用 ExecutionContext 区分 HTTP/RPC/WS；通过 APP_INTERCEPTOR 全局注册，避免在每个 controller 重复 @UseInterceptors。",
+          "level": "L2",
+          "pageRefs": ["interceptors", "fundamentals/execution-context"]
+        },
+        {
+          "title": "明确执行顺序",
+          "detail": "顺序为中间件→守卫→拦截器→管道→handler→拦截器→过滤器；全局组件优先用 APP_* token 而非 useGlobal*，保证依赖注入与顺序可预测。",
+          "level": "L2",
+          "pageRefs": ["faq/request-lifecycle", "middleware", "guards"]
+        },
+        {
+          "title": "请求上下文传递",
+          "detail": "用 AsyncLocalStorage 或 request-scoped provider 传递 traceId、用户与租户，避免层层透传参数；注意 request scope 会沿注入链传播，带来额外实例开销。",
+          "level": "L3",
+          "pageRefs": ["recipes/async-local-storage", "fundamentals/injection-scopes"]
+        }
+      ],
+      "checklist": [
+        "所有未捕获异常是否都有统一错误体与错误日志？",
+        "全局组件是否通过 APP_* 注册并可注入依赖？",
+        "关键链路是否带 traceId 并能串起日志？"
+      ],
+      "antiPatterns": [
+        "每个 controller 里 try/catch 后手写 res.status().json()。",
+        "用 @Res() 直接操作响应，绕过拦截器与序列化。"
+      ],
+      "nestApi": ["APP_FILTER", "APP_INTERCEPTOR", "APP_GUARD", "APP_PIPE", "ExecutionContext", "@Catch()", "AsyncLocalStorage"]
+    },
+    {
+      "id": "contract-api",
+      "titleZh": "校验与 API 契约",
+      "title": "Validation & API contract",
+      "layerId": "delivery",
+      "essential": "接口契约是前后端与外部系统的共同边界。输入校验、统一响应、OpenAPI 文档与版本策略若不同步，联调与升级就会变成猜谜；契约先行才能让变更可测试、可沟通。",
+      "practices": [
+        {
+          "title": "DTO 作为唯一输入契约",
+          "detail": "用 class-validator 装饰 DTO，全局 ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })；query/param 用 ParseUUIDPipe 等，禁止裸 any 与手写 if 校验。",
+          "level": "L2",
+          "pageRefs": ["application/validation", "pipes"]
+        },
+        {
+          "title": "统一响应与错误契约",
+          "detail": "约定分页信封、错误码与 HTTP 状态映射，序列化用 ClassSerializerInterceptor 或 @Exclude/@Expose 控制字段；密码、内部 ID 等敏感字段永不出现在响应中。",
+          "level": "L2",
+          "pageRefs": ["application/serialization", "interceptors"]
+        },
+        {
+          "title": "OpenAPI 契约同步",
+          "detail": "用 @nestjs/swagger 的 DocumentBuilder 与 SwaggerModule.createDocument 生成文档，CLI plugin 自动补 DTO 元数据；CI 导出 openapi.json 做 diff，破坏性变更需显式评审。",
+          "level": "L3",
+          "pageRefs": ["openapi/introduction", "openapi/cli-plugin"]
+        },
+        {
+          "title": "版本化与兼容演进",
+          "detail": "用 enableVersioning 选择 URI/Header/Media Type 策略，@Version 标注破坏性变更，VERSION_NEUTRAL 保留健康检查等稳定路由；弃用要给出迁移窗口与文档。",
+          "level": "L3",
+          "pageRefs": ["http/versioning"]
+        },
+        {
+          "title": "实时与回调接口选型",
+          "detail": "服务端推送优先 SSE（@Sse）或 WebSocket Gateway；第三方回调走 webhook，校验签名、时间戳与重放；写接口支持 Idempotency-Key，避免超时重试产生重复。",
+          "level": "L3",
+          "pageRefs": ["http/server-sent-events", "http/webhooks", "websockets/gateways"]
+        }
+      ],
+      "checklist": [
+        "所有入口参数是否都经过 DTO/schema 校验？",
+        "OpenAPI 文档是否由代码生成并纳入 CI diff？",
+        "响应是否过滤敏感字段、错误是否带可检索 code？",
+        "破坏性变更是否有版本与弃用计划？"
+      ],
+      "antiPatterns": [
+        "用 any 加手写 if 校验，缺字段直接抛 500。",
+        "文档手写维护，与实现长期不一致。"
+      ],
+      "nestApi": ["ValidationPipe", "class-validator", "ClassSerializerInterceptor", "SwaggerModule.createDocument()", "DocumentBuilder", "@Version", "@Sse"]
+    },
+    {
+      "id": "authentication",
+      "titleZh": "认证与授权",
+      "title": "Authentication & authorization",
+      "layerId": "service",
+      "essential": "认证回答“你是谁”，授权回答“你能做什么”。两者若混在 controller 或前端判断里，就会产生越权与审计缺口；企业需要可组合的策略、默认拒绝与可撤销的会话。",
+      "practices": [
+        {
+          "title": "全局认证与显式放行",
+          "detail": "用 @nestjs/authentication 或 Passport 策略完成登录与会话/令牌签发，注册全局 AuthenticationGuard，@Public() 显式放行；默认拒绝比逐路由添加守卫更安全。",
+          "level": "L2",
+          "pageRefs": ["security/authentication", "recipes/passport"]
+        },
+        {
+          "title": "策略化授权",
+          "detail": "用 @nestjs/authorization 的 @Policy()/@Can() 把权限写成可注入、可单测的策略，或自建 RBAC/ABAC Guard；资源级校验放 service，路由级只做粗粒度判断。",
+          "level": "L3",
+          "pageRefs": ["security/authorization", "guards"]
+        },
+        {
+          "title": "令牌与会话治理",
+          "detail": "短期 access token 配轮换 refresh token，服务端保存会话并可撤销；Cookie 用 HttpOnly/Secure/SameSite，权限缓存设 TTL 并在角色变更时主动失效。",
+          "level": "L3",
+          "pageRefs": ["security/authentication", "http/cookies"]
+        }
+      ],
+      "checklist": [
+        "新增路由默认是否受保护，公开路由是否显式标注？",
+        "权限判断是否覆盖资源归属，而非只看角色？",
+        "登出、改密、封禁后令牌/会话是否立即失效？"
+      ],
+      "antiPatterns": [
+        "只在 controller 里用 if (user.role === 'admin') 做授权。",
+        "把权限列表放进长期不过期的 JWT 中。"
+      ],
+      "nestApi": ["AuthenticationModule.forRoot()", "@Authenticate()", "@Public()", "@Policy()", "@Can()", "AuthGuard()"]
+    },
+    {
+      "id": "data",
+      "titleZh": "数据访问与事务",
+      "title": "Data access & transactions",
+      "layerId": "service",
+      "essential": "数据层承载一致性与性能两大风险：事务边界错误会写脏数据，N+1 与缺失索引会拖垮接口。企业项目需要明确的 Repository 边界、迁移流程与查询规范。",
+      "practices": [
+        {
+          "title": "ORM 集成与仓库边界",
+          "detail": "TypeOrmModule.forRoot/forFeature 或 PrismaService 封装连接；Repository 只在所属模块内使用，对外暴露 service/DTO，避免 Entity 泄漏到 controller。",
+          "level": "L2",
+          "pageRefs": ["data/typeorm", "data/prisma"]
+        },
+        {
+          "title": "明确事务边界",
+          "detail": "用 DataSource.transaction 或 QueryRunner 把多表写入包在一个事务里，事务内只做必要 DB 操作；跨服务写入改用 outbox，不要让长事务跨网络调用。",
+          "level": "L3",
+          "pageRefs": ["data/typeorm", "reliability/outbox"]
+        },
+        {
+          "title": "迁移与索引治理",
+          "detail": "迁移脚本入库、随发布执行且可回滚，生产禁止 synchronize: true；为高频过滤/排序字段建索引并用 EXPLAIN 验证，删除索引需评估影响。",
+          "level": "L3",
+          "pageRefs": ["data/typeorm", "data/prisma"]
+        },
+        {
+          "title": "分页与 N+1 治理",
+          "detail": "列表接口强制分页与页大小上限，关联查询用 relations/join 或批量加载避免 N+1；只 select 需要的字段，慢查询纳入日志与告警。",
+          "level": "L2",
+          "pageRefs": ["data/typeorm", "http/performance"]
+        }
+      ],
+      "checklist": [
+        "生产是否关闭 synchronize 并走版本化迁移？",
+        "关键查询是否有索引与分页上限？",
+        "事务是否覆盖所有相关写入且不跨远程调用？"
+      ],
+      "antiPatterns": [
+        "在循环里 await 查询关联数据，形成 N+1。",
+        "把 Entity 直接作为 API 响应，暴露敏感列。"
+      ],
+      "nestApi": ["TypeOrmModule.forRoot()", "@InjectRepository()", "DataSource.transaction()", "QueryRunner", "PrismaService"]
+    },
+    {
+      "id": "cache-performance",
+      "titleZh": "缓存与性能",
+      "title": "Caching & performance",
+      "layerId": "service",
+      "essential": "缓存能放大吞吐，也会放大错误：键设计不当、失效缺失或击穿会把压力打回数据库。企业需要明确缓存层级、TTL 与失效策略，并用压测建立性能基线。",
+      "practices": [
+        {
+          "title": "分层缓存与键设计",
+          "detail": "用 CacheModule.register({ ttl, max }) 或 Redis store 缓存热点读，键包含租户与版本前缀；本地缓存只放可容忍短暂不一致的数据。",
+          "level": "L2",
+          "pageRefs": ["data/caching"]
+        },
+        {
+          "title": "失效与击穿保护",
+          "detail": "写路径显式失效相关键，TTL 加随机抖动防雪崩；热点键用 single-flight/互斥回源，空结果缓存短 TTL 防穿透，并监控命中率。",
+          "level": "L3",
+          "pageRefs": ["data/caching", "application/events"]
+        },
+        {
+          "title": "传输与运行时优化",
+          "detail": "开启 compression、合理 keep-alive 与连接池；高 QPS 轻路由可评估 NodeAdapter 或 FastifyAdapter，用压测数据而非直觉决策。",
+          "level": "L3",
+          "pageRefs": ["http/compression", "http/performance"]
+        }
+      ],
+      "checklist": [
+        "缓存键是否含租户/版本，避免跨环境串数据？",
+        "写操作是否会失效对应缓存，TTL 是否有抖动？",
+        "是否有压测基线与 p95 目标，而非只看平均值？"
+      ],
+      "antiPatterns": [
+        "无 TTL 的永久缓存，数据变更后长期不一致。",
+        "缓存全部接口，包括个性化与敏感数据。"
+      ],
+      "nestApi": ["CacheModule.register()", "CACHE_MANAGER", "CacheInterceptor", "@CacheKey()", "@CacheTTL()"]
+    },
+    {
+      "id": "async-messaging",
+      "titleZh": "异步与消息",
+      "title": "Async processing & messaging",
+      "layerId": "service",
+      "essential": "把耗时与易失败的工作移出请求线程，是伸缩的前提。队列、事件与 outbox 要解决的不只是异步，还有重复、丢失与顺序，否则最终一致性会成为事故源。",
+      "practices": [
+        {
+          "title": "队列削峰与解耦",
+          "detail": "用 @nestjs/bullmq 的 BullModule.registerQueue 与 @Processor/WorkerHost 消费，任务带 jobId 去重，配置 attempts/backoff 与 removeOnComplete，worker 独立进程部署。",
+          "level": "L2",
+          "pageRefs": ["application/queues"]
+        },
+        {
+          "title": "进程内事件与 CQRS",
+          "detail": "@nestjs/event-emitter 适合进程内解耦，@nestjs/cqrs 用 CommandBus/QueryBus/EventBus 分离读写；注意进程内事件不持久化，重启会丢。",
+          "level": "L2",
+          "pageRefs": ["application/events", "recipes/cqrs"]
+        },
+        {
+          "title": "可靠投递与幂等消费",
+          "detail": "跨库/跨服务用 @nestjs/outbox 把消息与业务数据同事务写入，relay 重试并进死信；消费端用 @Idempotent() 或 inbox 表按消息 id 去重。",
+          "level": "L3",
+          "pageRefs": ["reliability/outbox", "reliability/idempotency"]
+        },
+        {
+          "title": "传输器选型",
+          "detail": "进程内用 TCP/Redis，跨团队高吞吐用 Kafka/RabbitMQ/NATS，同步强契约用 gRPC；用 @MessagePattern/@EventPattern 明确 request-response 与 event 语义。",
+          "level": "L3",
+          "pageRefs": ["microservices/basics", "microservices/kafka", "microservices/grpc"]
+        }
+      ],
+      "checklist": [
+        "消息是否可能重复，消费端是否幂等？",
+        "失败是否有重试、退避与死信处理入口？",
+        "队列积压与消费延迟是否有监控告警？"
+      ],
+      "antiPatterns": [
+        "在请求线程里同步执行发邮件、转码等重任务。",
+        "用进程内 EventEmitter 当跨服务消息总线。"
+      ],
+      "nestApi": ["BullModule.registerQueue()", "@Processor()", "WorkerHost", "@OnEvent()", "CommandBus", "@MessagePattern()", "OutboxModule.forRoot()"]
+    },
+    {
+      "id": "reliability",
+      "titleZh": "可靠性与容错",
+      "title": "Reliability & resilience",
+      "layerId": "production",
+      "essential": "依赖总会变慢或挂掉。没有超时、重试、熔断与健康检查，单点抖动会沿调用链放大成雪崩；可靠性要用策略和演练保证，而不是靠重启。",
+      "practices": [
+        {
+          "title": "健康检查与探针",
+          "detail": "用 @nestjs/terminus 提供 /health/live 与 /health/ready，检查 DB/Redis/下游；readiness 失败即摘流量，liveness 只反映进程存活，避免误杀。",
+          "level": "L2",
+          "pageRefs": ["reliability/terminus", "deployment"]
+        },
+        {
+          "title": "超时、重试与熔断",
+          "detail": "用 @nestjs/resilience 的 @Timeout/@Retry/@CircuitBreaker/@Bulkhead/@Fallback 为入口与下游调用设定预算；只对幂等操作重试，重试必须带抖动。",
+          "level": "L3",
+          "pageRefs": ["reliability/resilience", "application/http-client"]
+        },
+        {
+          "title": "幂等与分布式锁",
+          "detail": "写接口用 @Idempotent() 与 Idempotency-Key 防重复；定时任务用 @OnOneInstance/@WithoutOverlapping，跨实例写用带 fencing token 的租约锁。",
+          "level": "L3",
+          "pageRefs": ["reliability/idempotency", "reliability/locks"]
+        }
+      ],
+      "checklist": [
+        "每个外部调用是否有超时与失败降级？",
+        "readiness 是否覆盖关键依赖，滚动发布是否摘流？",
+        "重复请求/重复消息是否只会产生一次副作用？"
+      ],
+      "antiPatterns": [
+        "无超时地 await 第三方 SDK，连接与线程被长期占满。",
+        "对所有错误无脑重试，放大下游故障。"
+      ],
+      "nestApi": ["@Timeout()", "@Retry()", "@CircuitBreaker()", "@Idempotent()", "@OnOneInstance()", "HealthCheckService"]
+    },
+    {
+      "id": "observability",
+      "titleZh": "可观测性",
+      "title": "Observability",
+      "layerId": "production",
+      "essential": "线上问题不会自带上下文。结构化日志、traceId 串联的链路与可聚合指标，决定排障是几分钟还是几小时；可观测性要在设计时埋点，而不是出事后再补。",
+      "practices": [
+        {
+          "title": "结构化日志",
+          "detail": "用内置 Logger 或 pino 输出 JSON，字段含 traceId、userId、route、耗时；生产关闭 debug，敏感字段脱敏，日志统一采集到集中平台。",
+          "level": "L2",
+          "pageRefs": ["application/logger", "deployment"]
+        },
+        {
+          "title": "链路追踪",
+          "detail": "用 @nestjs/observe（createObserveModule + instrument）或 OpenTelemetry 自动埋点，跨 HTTP/gRPC/队列传播 traceparent；自定义 span 只加在关键业务节点。",
+          "level": "L3",
+          "pageRefs": ["observability/distributed-tracing", "observability/opentelemetry", "observability/sdk"]
+        },
+        {
+          "title": "指标、错误与告警",
+          "detail": "采集请求量、错误率、p95、队列积压与依赖延迟，错误监控带堆栈与 release 版本；按 SLO 设 burn-rate 告警，避免噪声淹没真问题。",
+          "level": "L3",
+          "pageRefs": ["observability/error-monitoring", "observability/choosing-an-apm"]
+        }
+      ],
+      "checklist": [
+        "日志能否用 traceId 串起一次跨服务请求？",
+        "是否有错误率与 p95 的 SLO 与告警？",
+        "发布版本是否写入日志/追踪，便于对比？"
+      ],
+      "antiPatterns": [
+        "只打 console.log 并拼接字符串，无法聚合查询。",
+        "日志里输出 token、密码、身份证等敏感数据。"
+      ],
+      "nestApi": ["Logger", "createObserveModule()", "ObserveModule.forRoot()", "instrument", "TracerService"]
+    },
+    {
+      "id": "security",
+      "titleZh": "安全基线",
+      "title": "Security baseline",
+      "layerId": "production",
+      "essential": "安全不是上线前的一次扫描，而是默认配置：传输、浏览器策略、限流、哈希与密钥管理都要有基线。一个缺失的 CORS 或限流规则就可能变成数据泄漏或账单事故。",
+      "practices": [
+        {
+          "title": "浏览器与传输基线",
+          "detail": "启用 helmet 安全头、精确 CORS 白名单（含 methods 与 credentials）与 HTTPS/HSTS；生产关闭或保护 Swagger UI 与调试端点。",
+          "level": "L2",
+          "pageRefs": ["security/helmet", "security/cors"]
+        },
+        {
+          "title": "CSRF、会话与 Cookie",
+          "detail": "Cookie 会话用 SameSite 加 CSRF token，或校验 Origin/Sec-Fetch-Site；会话存储放 Redis/DB 并支持撤销，避免把登录态留在单机内存。",
+          "level": "L3",
+          "pageRefs": ["security/csrf", "http/cookies", "http/session"]
+        },
+        {
+          "title": "限流与暴力破解防护",
+          "detail": "ThrottlerModule.forRoot 配 APP_GUARD 注册 ThrottlerGuard，登录/验证码/导出等敏感路由用 @Throttle 单独收紧；多实例用 Redis 存储计数。",
+          "level": "L2",
+          "pageRefs": ["security/rate-limiting"]
+        },
+        {
+          "title": "哈希、加密与密钥",
+          "detail": "密码用 PasswordHasher（scrypt）或 argon2/bcrypt 加盐哈希，绝不明文或可逆加密；敏感字段用 AES-GCM 加密，密钥交给 KMS，并定期 npm audit。",
+          "level": "L3",
+          "pageRefs": ["security/encryption-and-hashing", "security/authentication"]
+        }
+      ],
+      "checklist": [
+        "CORS 是否白名单而非 *，生产是否关闭调试端点？",
+        "密码是否强哈希、密钥是否可轮换？",
+        "敏感接口是否有限流与审计日志？"
+      ],
+      "antiPatterns": [
+        "app.enableCors() 无参数直接放开所有来源。",
+        "用 MD5/SHA1 存密码，或在日志里打印令牌。"
+      ],
+      "nestApi": ["enableCors()", "helmet", "ThrottlerModule.forRoot()", "ThrottlerGuard", "@Throttle()", "PasswordHasher"]
+    },
+    {
+      "id": "testing-delivery",
+      "titleZh": "测试与交付",
+      "title": "Testing & delivery",
+      "layerId": "delivery",
+      "essential": "能重复交付才算工程能力。测试金字塔、CI 门禁、可复现镜像与优雅停机共同决定发布风险；缺少任何一环，团队都会用加班和回滚来补。",
+      "practices": [
+        {
+          "title": "单元测试与测试模块",
+          "detail": "用 Test.createTestingModule 组织 provider 与 mock，service 单测覆盖分支与异常；纯领域逻辑不依赖 Nest 容器，测试更快更稳。",
+          "level": "L2",
+          "pageRefs": ["fundamentals/testing"]
+        },
+        {
+          "title": "e2e 与契约测试",
+          "detail": "e2e 用 createNestApplication 加 supertest 覆盖认证、校验与错误码；对 OpenAPI 做 schema 校验或消费者契约测试，防止接口悄悄漂移。",
+          "level": "L3",
+          "pageRefs": ["fundamentals/testing", "openapi/introduction"]
+        },
+        {
+          "title": "CI 门禁与流水线模板",
+          "detail": "流水线依次执行 lint、typecheck、单测、e2e、构建与镜像扫描，覆盖率设阈值；迁移脚本在 CI 起库验证，失败阻断合并，并沉淀为组织级模板。",
+          "level": "L4",
+          "pageRefs": ["devtools/ci-cd-integration", "cli/overview"]
+        },
+        {
+          "title": "镜像、发布与优雅停机",
+          "detail": "多阶段 Docker 构建只带 dist 与生产依赖，NODE_ENV=production；enableShutdownHooks 配合 OnApplicationShutdown 等在途请求结束后退出，结合 readiness 滚动发布。",
+          "level": "L3",
+          "pageRefs": ["deployment", "fundamentals/lifecycle-events"]
+        }
+      ],
+      "checklist": [
+        "CI 是否阻断 lint/单测/e2e/构建失败？",
+        "镜像是否最小化、以非 root 运行并固定基础版本？",
+        "停机时是否等待在途请求与队列任务完成？"
+      ],
+      "antiPatterns": [
+        "只测 happy path，异常与权限分支无覆盖。",
+        "在服务器上手工 build，或用 latest 标签发布。"
+      ],
+      "nestApi": ["Test.createTestingModule()", "createNestApplication()", "enableShutdownHooks()", "OnApplicationShutdown", "overrideProvider()"]
+    }
+  ],
+  "projectTemplate": {
+    "summary": "按“薄接口、厚领域”组织 src：main.ts 只负责适配器与全局组件，common 放过滤器/守卫/拦截器/装饰器，config 放命名空间与启动校验，modules 下每个业务能力自带 controller/service/dto/entities，数据库、缓存、队列、消息与可观测性作为基础设施模块用 forRootAsync 注入配置。",
+    "tree": [
+      "src/",
+      "  main.ts                 # 适配器、全局管道/过滤器、版本化、Swagger",
+      "  app.module.ts           # 只做模块装配",
+      "  common/                 # filters/guards/interceptors/pipes/decorators",
+      "  config/                 # registerAs 命名空间 + 启动校验",
+      "  infrastructure/         # database、cache、queue、messaging、observability",
+      "  modules/",
+      "    orders/               # controller、service、dto、entities、repository",
+      "      orders.module.ts",
+      "  test/                   # e2e 与 fixtures",
+      "  migrations/",
+      "  Dockerfile",
+      "  openapi.json            # CI 导出并 diff"
+    ]
+  }
+}

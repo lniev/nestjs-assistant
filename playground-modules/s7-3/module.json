@@ -1,0 +1,59 @@
+{
+  "id": "s7-3",
+  "itemId": "s7-3",
+  "stageId": "s7",
+  "stageIndex": 7,
+  "itemIndex": 3,
+  "stageTitleZh": "企业级架构与可靠性",
+  "titleZh": "超时、重试、熔断与幂等",
+  "title": "超时、重试、熔断与幂等",
+  "level": "L4",
+  "goal": "为外部依赖设置超时、重试、熔断与降级，用 Idempotency-Key 保证支付类写操作可安全重试。",
+  "practice": "在操练场模拟下游 3 秒延迟，验证超时、熔断打开与降级返回值。",
+  "deliverable": "支付幂等键、物流查询熔断降级与故障演练记录",
+  "accept": "下游超时返回 504 或降级值，重复支付请求只扣一次款",
+  "minutes": 360,
+  "pageIds": [
+    "reliability/resilience",
+    "reliability/idempotency"
+  ],
+  "summary": "手写的超时/指数退避重试/熔断器包住一个假慢下游：GET /shipping/quote/:id 永远有兜底报价，POST /shipping/downstream 把延迟调到 300ms 可观察超时、重试与熔断打开（/shipping/circuit）；POST /payments 用 Idempotency-Key 演示重复请求只扣一次款。",
+  "defaultFile": "src/app.module.ts",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/shipping/quote/1",
+      "expect": 200
+    },
+    {
+      "method": "GET",
+      "path": "/shipping/circuit",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/shipping/downstream",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/shipping/reset",
+      "expect": 200
+    },
+    {
+      "method": "POST",
+      "path": "/payments",
+      "expect": 201
+    },
+    {
+      "method": "GET",
+      "path": "/payments",
+      "expect": 200
+    }
+  ]
+}

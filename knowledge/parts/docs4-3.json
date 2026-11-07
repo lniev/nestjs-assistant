@@ -1,0 +1,257 @@
+[
+  {
+    "id": "http/compression",
+    "titleZh": "压缩",
+    "summary": "压缩能显著减小响应体体积，让 Web 应用加载更快。Express 下用 compression 中间件并全局 app.use(compression())，它支持 gzip、deflate 与 Brotli 并按 Accept-Encoding 协商；Fastify 下改用 @fastify/compress 插件，可配置编码优先级与 Brotli 质量参数。高流量生产环境建议把压缩卸载到 Nginx 等反向代理。",
+    "sections": [
+      {
+        "heading": "Express 启用压缩",
+        "text": "安装 compression 与 @types/compression 后，在初始化文件中调用 app.use(compression()) 即可对所有响应生效。它支持 gzip、deflate 与 Brotli，会根据请求的 Accept-Encoding 头自动选择合适编码。高流量生产环境建议把压缩交给反向代理，应用端不再启用。"
+      },
+      {
+        "heading": "Fastify 启用压缩",
+        "text": "使用 FastifyAdapter 时改注册 @fastify/compress 插件，创建应用必须显式声明 NestFastifyApplication 类型，否则拿不到 register() 方法。插件默认压缩所有符合条件的响应，并按 zstd、br、gzip、deflate 的优先级选择客户端接受的第一个编码。"
+      },
+      {
+        "heading": "编码与质量调优",
+        "text": "Brotli 压缩率高但高质量等级很慢，插件默认把 BROTLI_PARAM_QUALITY 设为 4 而不是 zlib 的 11，可在 0 到 11 之间按负载权衡。若想更快，可用 encodings 选项只保留 gzip 与 deflate，响应体积会变大但压缩耗时更低。"
+      }
+    ],
+    "keyPoints": [
+      "Express 用 compression 中间件，app.use(compression()) 全局启用",
+      "Fastify 用 @fastify/compress 插件，需声明 Fastify 应用类型",
+      "压缩按 Accept-Encoding 协商，支持 gzip、deflate 与 Brotli",
+      "高流量生产环境建议把压缩卸载到反向代理",
+      "@fastify/compress 默认首选 zstd，其次 br、gzip、deflate",
+      "Brotli 质量默认 4，可调 0-11 平衡时间与体积"
+    ],
+    "snippets": [
+      {
+        "title": "Express 启用压缩",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport compression from 'compression';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  // 按 Accept-Encoding 协商 gzip、deflate 或 Brotli\n  app.use(compression());\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "Fastify 注册压缩插件",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';\nimport compression from '@fastify/compress';\n\nconst app = await NestFactory.create<NestFastifyApplication>(\n  AppModule,\n  new FastifyAdapter(),\n);\nawait app.register(compression, { encodings: ['gzip', 'deflate'] });\nawait app.listen(process.env.PORT ?? 3000);"
+      }
+    ],
+    "api": ["compression", "@fastify/compress", "NestFastifyApplication", "FastifyAdapter", "encodings", "brotliOptions"],
+    "pitfalls": [
+      "反向代理已做压缩时应用端不要再启用，避免重复压缩",
+      "Fastify 未声明 NestFastifyApplication 类型时 register() 不可用",
+      "Brotli 高质量等级会显著增加压缩耗时，需按负载调参"
+    ],
+    "enterprise": "通常只在应用边缘（Nginx、CDN）开启压缩并缓存压缩结果；必须由应用压缩时，只保留 gzip 与 deflate，并对图片、视频等已压缩内容跳过。",
+    "related": ["http/performance", "http/file-upload", "recipes/fastify-migration", "middleware"]
+  },
+  {
+    "id": "http/server-sent-events",
+    "titleZh": "Server-Sent Events",
+    "summary": "Server-Sent Events（SSE）是一种服务端推送技术，客户端通过一个 HTTP 连接持续接收自动更新，每条通知是一段以空行结尾的文本。在控制器路由上添加 @Sse() 装饰器即可启用，处理函数返回 Observable<MessageEvent>；页面还讲状态码与响应头、客户端断开时的清理、@SseSignal() 与客户端 EventSource 用法。",
+    "sections": [
+      {
+        "heading": "启用 SSE 路由",
+        "text": "@Sse('sse') 标注控制器中的路由处理器，方法必须返回 Observable<MessageEvent> 或其 Promise。每个 MessageEvent 的 data 会被序列化成 JSON，type 作为 event 字段发送，comment 作为注释行（可用于心跳），未设置 id 时 Nest 自动递增编号。"
+      },
+      {
+        "heading": "响应状态与响应头",
+        "text": "@Sse() 路由会发送 @Header() 设置的响应头；NestJS v12.1.3 起还会发送处理器或拦截器在流开始前设置的状态码，Fastify 上还会带上它们设置的响应头。可在处理器中注入 @Res({ passthrough: true }) 后调用 res.status() 与 res.header()。"
+      },
+      {
+        "heading": "断开清理与异步设置",
+        "text": "客户端调用 eventSource.close() 后，Nest 会自动取消订阅返回的 Observable，停止事件流并清理定时器等资源；需要自定义清理逻辑时用 finalize 操作符。处理器也可以是 async 的，返回 Promise<Observable>，适合开流前做数据库游标等昂贵准备。"
+      },
+      {
+        "heading": "处理设置阶段的断开",
+        "text": "若客户端在 Promise 尚未 resolve 时断开，Nest 不会订阅返回的 Observable，teardown 不会执行，准备阶段申请的资源会泄漏。注入 @SseSignal() 得到 AbortSignal，在 setup 阶段检查 signal.aborted 并释放资源，或把资源挂到 abort 事件上统一清理。"
+      }
+    ],
+    "keyPoints": [
+      "@Sse() 装饰器标记路由，处理函数返回 Observable<MessageEvent>",
+      "MessageEvent 的 data 序列化为 JSON，type 作为 event 字段",
+      "客户端断开时 Nest 自动取消订阅，可用 finalize 做清理",
+      "处理器可 async 返回 Promise<Observable>，便于开流前准备",
+      "@SseSignal() 提供 AbortSignal，覆盖设置阶段的断开场景",
+      "断开发生在 Promise resolve 前时不会订阅，资源会泄漏",
+      "客户端用 EventSource 连接，事件流为 text/event-stream"
+    ],
+    "snippets": [
+      {
+        "title": "每秒推送一条事件",
+        "lang": "typescript",
+        "code": "import { Controller, MessageEvent, Sse } from '@nestjs/common';\nimport { interval, map, Observable } from 'rxjs';\n\n@Controller()\nexport class EventsController {\n  @Sse('sse')\n  sse(): Observable<MessageEvent> {\n    return interval(1000).pipe(\n      map(() => ({ data: { hello: 'world' } })),\n    );\n  }\n}"
+      },
+      {
+        "title": "用 @SseSignal() 释放资源",
+        "lang": "typescript",
+        "code": "import { MessageEvent, Sse, SseSignal } from '@nestjs/common';\nimport { EMPTY, Observable } from 'rxjs';\n\n@Sse('stream')\nasync stream(@SseSignal() signal: AbortSignal): Promise<Observable<MessageEvent>> {\n  const session = await createSession();\n\n  if (signal.aborted) {\n    await session.close();\n    return EMPTY;\n  }\n\n  return new Observable((subscriber) => {\n    const stream = session.start();\n    stream.on('data', (data) => subscriber.next({ data }));\n    return () => {\n      stream.stop();\n      session.close();\n    };\n  });\n}"
+      }
+    ],
+    "api": ["@Sse()", "MessageEvent", "Observable", "@SseSignal()", "EventSource", "finalize"],
+    "pitfalls": [
+      "SSE 路由必须返回 Observable，返回普通对象不会建立事件流",
+      "Promise 未 resolve 时客户端断开，teardown 不会执行导致资源泄漏",
+      "@SseSignal() 只在 @Sse() 路由上有效，其他路由得到 undefined"
+    ],
+    "enterprise": "适合实时通知、行情、进度推送等单向场景，比 WebSocket 更易穿过代理。生产注意心跳注释行、连接数与超时配置，并为每个连接设置清理与上限。",
+    "related": ["websockets/gateways", "controllers", "interceptors", "http/performance"]
+  },
+  {
+    "id": "http/mvc",
+    "titleZh": "模型-视图-控制器",
+    "summary": "默认使用 Express 的 Nest 天然支持 MVC 模式：配置模板引擎后，控制器用 @Render() 返回要渲染的视图与数据。页面演示 hbs 引擎、静态资源目录、setBaseViewsDir 与 setViewEngine 的配置，布局的复用，动态选择模板时改用 @Res() 的 res.render()，以及 Fastify 下 @fastify/view 的写法。",
+    "sections": [
+      {
+        "heading": "配置模板引擎",
+        "text": "创建支持 MVC 的应用需安装模板引擎，示例使用 hbs。以 NestExpressApplication 创建应用后，依次调用 useStaticAssets() 指定静态资源目录、setBaseViewsDir() 指定模板目录、setViewEngine('hbs') 指定引擎；三者配合后 Express 才知道如何渲染 HTML。"
+      },
+      {
+        "heading": "渲染视图与布局",
+        "text": "控制器方法用 @Render('index') 指定模板，返回值作为模板数据传入，模板里的 message 占位符即对应返回对象的属性。hbs 支持布局：用 app.setLocal('layout', 'layouts/app') 设置共享外壳，视图内容通过 body 插入布局。"
+      },
+      {
+        "heading": "动态选择模板",
+        "text": "模板名需要由逻辑决定时，用 @Res() 注入库相关的 response 对象，在处理器里调用 res.render(viewName, data)。Nest 检测到 @Res() 后会交出响应控制权，此时处理器要自行完成响应；静态模板名仍优先用 @Render()。"
+      },
+      {
+        "heading": "Fastify 下的 MVC",
+        "text": "Fastify 需安装 @fastify/static 与 @fastify/view，并在 main.ts 调用 useStaticAssets() 与 setViewEngine({ engine: { handlebars }, templates })。与 Express 不同，@Render() 的模板名必须带扩展名，例如 index.hbs。"
+      }
+    ],
+    "keyPoints": [
+      "MVC 需要模板引擎，示例用 hbs，并配置静态资源与视图目录",
+      "@Render() 指定模板，返回值作为模板数据传入",
+      "setBaseViewsDir 与 setViewEngine 需在启动时配置",
+      "布局用 app.setLocal('layout', ...) 设置共享外壳",
+      "动态模板用 @Res() 的 res.render() 自行完成响应",
+      "Fastify 下 @Render() 的模板名必须包含扩展名",
+      "Fastify 用 @fastify/static 与 @fastify/view 提供同等能力"
+    ],
+    "snippets": [
+      {
+        "title": "配置 Express 模板引擎",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { NestExpressApplication } from '@nestjs/platform-express';\nimport { join } from 'node:path';\n\nasync function bootstrap() {\n  const app = await NestFactory.create<NestExpressApplication>(AppModule);\n  app.useStaticAssets(join(import.meta.dirname, '..', 'public'));\n  app.setBaseViewsDir(join(import.meta.dirname, '..', 'views'));\n  app.setViewEngine('hbs');\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "用 @Render() 渲染视图",
+        "lang": "typescript",
+        "code": "import { Controller, Get, Render, Res } from '@nestjs/common';\n\n@Controller()\nexport class AppController {\n  @Get()\n  @Render('index')\n  root() {\n    return { message: 'Hello world!' };\n  }\n\n  @Get('dynamic')\n  dynamic(@Res() res: Response) {\n    return res.render('index', { message: 'Dynamic' });\n  }\n}"
+      }
+    ],
+    "api": ["@Render()", "NestExpressApplication", "setBaseViewsDir()", "setViewEngine()", "useStaticAssets()", "@Res()", "setLocal()", "@fastify/view"],
+    "pitfalls": [
+      "Fastify 下 @Render() 的模板名必须带扩展名，否则找不到视图",
+      "使用 @Res() 后响应由处理器负责，忘了返回会挂起请求",
+      "NodeAdapter 支持 @Render()，但不支持 res.render()"
+    ],
+    "enterprise": "适合需要服务端渲染的后台、营销页与邮件预览等场景。模板与静态资源按领域拆分目录，生产开启模板缓存与 CDN，动态模板尽量收敛到少数入口。",
+    "related": ["controllers", "http/session", "recipes/serve-static", "http/performance"]
+  },
+  {
+    "id": "http/performance",
+    "titleZh": "HTTP 适配器",
+    "summary": "Nest 不直接与 HTTP 服务器对话，而是通过 HTTP 适配器把中间件与处理器代理给具体框架，从而做到框架无关、代码可在适配器间迁移。内置 ExpressAdapter、FastifyAdapter 与 NodeAdapter 三种；页面比较性能与选型建议，讲 NodeAdapter 的 Express 兼容性、选项与 body 解析，以及 Fastify、Express 的接入细节。",
+    "sections": [
+      {
+        "heading": "三种适配器与选型",
+        "text": "ExpressAdapter 基于 Express 且是默认值，FastifyAdapter 基于 Fastify，NodeAdapter 直接运行在 node:http 上。v12.3 起推荐 NodeAdapter：它最快，且请求与响应对象带 Express 风格辅助方法；依赖 Express 独有 API 时继续用 ExpressAdapter。"
+      },
+      {
+        "heading": "适配器兼容性",
+        "text": "NodeRequest 与 NodeResponse 扩展了 req.get()、res.status()、res.json() 等常用方法，helmet、passport 等中间件可直接使用。但它按具体度匹配路由、路径区分大小写，部分 Express API 如 res.render() 不可用。"
+      },
+      {
+        "heading": "NodeAdapter 选项",
+        "text": "maxParamLength 调整路由参数长度上限，默认 100，超长会落到其他路由或返回 414；trustProxy 让 req.ip、req.protocol 从受信代理的 X-Forwarded-* 头解析；querystringParser 可换成 qs 以支持嵌套对象与数组。body 解析器支持 onProtoPoisoning 等防护选项。"
+      },
+      {
+        "heading": "Fastify 适配器",
+        "text": "FastifyAdapter 默认只监听 localhost，需在 listen() 传 '0.0.0.0'；重定向要先 status(302) 再 redirect()；中间件拿到原生 req 与 res；@RouteConfig() 与 @RouteConstraints() 透传 Fastify 的路由配置与约束。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 通过 HTTP 适配器解耦框架，业务代码可在适配器间迁移",
+      "内置 ExpressAdapter、FastifyAdapter 与 NodeAdapter 三种",
+      "v12.3 起推荐 NodeAdapter，v13 将成为默认适配器",
+      "NodeAdapter 提供 Express 风格辅助方法，多数中间件可直接用",
+      "NodeAdapter 按具体度匹配路由，路径区分大小写",
+      "Fastify 默认只监听 localhost，需传 0.0.0.0 对外服务",
+      "maxParamLength、trustProxy、querystringParser 三个选项"
+    ],
+    "snippets": [
+      {
+        "title": "使用 NodeAdapter",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { NestNodeApplication, NodeAdapter } from '@nestjs/platform-node';\n\nasync function bootstrap() {\n  const app = await NestFactory.create<NestNodeApplication>(\n    AppModule,\n    new NodeAdapter({ trustProxy: 'loopback' }),\n  );\n  await app.listen(process.env.PORT ?? 3000);\n}\nawait bootstrap();"
+      },
+      {
+        "title": "使用 FastifyAdapter",
+        "lang": "typescript",
+        "code": "import { NestFactory } from '@nestjs/core';\nimport { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';\n\nasync function bootstrap() {\n  const app = await NestFactory.create<NestFastifyApplication>(\n    AppModule,\n    new FastifyAdapter({ logger: true }),\n  );\n  await app.listen(3000, '0.0.0.0');\n}\nawait bootstrap();"
+      }
+    ],
+    "api": ["ExpressAdapter", "FastifyAdapter", "NodeAdapter", "NestExpressApplication", "NestFastifyApplication", "NestNodeApplication", "@RouteConfig()", "@RouteConstraints()", "trustProxy", "maxParamLength"],
+    "pitfalls": [
+      "切换适配器前确认依赖包是否只支持 Express，例如部分中间件",
+      "Fastify 下 @Render() 模板名要带扩展名，与 Express 不同",
+      "开启 trustProxy 只信任自有代理，否则客户端可伪造转发头"
+    ],
+    "enterprise": "新项目可直接采用 NodeAdapter 获得最佳吞吐并复用 Express 生态中间件；已有项目渐进迁移，先用 FastifyAdapter 获取插件生态，再按兼容性清单切换，压测以真实路由为准。",
+    "related": ["middleware", "http/mvc", "recipes/fastify-migration", "faq/http-adapter"]
+  },
+  {
+    "id": "http/webhooks",
+    "titleZh": "Webhooks",
+    "summary": "@nestjs/webhooks 在与订单事务提交后向合作伙伴发送带签名、可重试的 webhook，并基于原始请求体验证收到的 webhook。出站消息走 outbox：dispatch() 与业务在同一事务写入，提交后由 worker 分发、按 Standard Webhooks 签名、退避重试约两天并保留投递日志与重放；入站用一个 @VerifyWebhook() 装饰器完成验签与去重。",
+    "sections": [
+      {
+        "heading": "出站投递与 outbox",
+        "text": "Webhooks.dispatch(tx, message) 把消息写入 outbox 的同一个事务，type、data、tenant 决定接收方与负载；提交后 relay 把消息交给 fan-out，为该 tenant 订阅了该类型的所有启用端点各创建一条 delivery，worker 再逐条签名发送。事务回滚则消息不存在，也不会发送。"
+      },
+      {
+        "heading": "重试与投递日志",
+        "text": "2xx 视为成功，5xx、4xx、3xx、超时与连接失败都会按退避重试，并读取 Retry-After；429、502、503、504 会暂停该端点一段时间。410 直接判失败并禁用端点；连续失败超过 disableEndpointAfter 也会禁用。每次尝试都记录状态码、耗时与响应片段，可查询日志并重放。"
+      },
+      {
+        "heading": "入站验签与去重",
+        "text": "应用需以 rawBody: true 创建，否则验签因重新序列化失败。receivers 按名字配置 scheme（standard、stripe、github）、secret 与 tolerance；@VerifyWebhook() 在处理器前校验签名与时间窗，@IncomingWebhook() 注入已验签载荷，并按 webhook-id 去重。"
+      },
+      {
+        "heading": "安全与生产要点",
+        "text": "端点 URL 是外部输入：默认只允许公网 https://，关闭 allowHttp 与 allowPrivateNetworks，避免 SSRF 打到云元数据地址。secret 以 whsec_ 开头并支持轮换与落盘加密；生产要注册 PostgresWebhookStore、先执行迁移，并对 lagMs 与 endpoint-disabled 告警。"
+      }
+    ],
+    "keyPoints": [
+      "dispatch(tx, message) 与业务同事务写入 outbox，提交后才发送",
+      "worker 按 Standard Webhooks 签名并退避重试约两天",
+      "@VerifyWebhook() 校验原始请求体签名，@IncomingWebhook() 注入载荷",
+      "processInTransaction() 让业务与去重记录在同一事务提交",
+      "端点 URL 是外部输入，默认只允许公网 https 以防 SSRF",
+      "投递至少一次，接收方必须按 webhook-id 去重",
+      "生产必须注册数据库 store 并独立执行迁移"
+    ],
+    "snippets": [
+      {
+        "title": "事务内派发 webhook",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class OrdersService {\n  constructor(\n    @InjectDrizzle() private readonly db: Database,\n    private readonly webhooks: Webhooks<Transaction>,\n  ) {}\n\n  async cancelOrder(id: string, reason: string): Promise<Order> {\n    const order = await this.db.transaction(async (tx) => {\n      await tx.update(orders).set({ status: 'cancelled' }).where(eq(orders.id, id));\n      await this.webhooks.dispatch(tx, {\n        type: 'order.cancelled',\n        tenant: 'northside',\n        data: { orderId: id, reason },\n      });\n      return { id, status: 'cancelled' as const };\n    });\n\n    this.webhooks.notify();\n    return order;\n  }\n}"
+      },
+      {
+        "title": "接收并去重 webhook",
+        "lang": "typescript",
+        "code": "@Controller('webhooks/payments')\nexport class PaymentWebhooksController {\n  constructor(\n    @InjectDrizzle() private readonly db: Database,\n    private readonly ordersService: OrdersService,\n  ) {}\n\n  @Post()\n  @HttpCode(HttpStatus.OK)\n  @VerifyWebhook('payments')\n  async receive(@IncomingWebhook() webhook: IncomingWebhook<PaymentEvent>) {\n    const { data } = webhook.payload;\n\n    await this.db.transaction(async (tx) =>\n      webhook.processInTransaction(tx, () =>\n        this.ordersService.markPaid(tx, data.orderId, data.paymentId),\n      ),\n    );\n  }\n}"
+      }
+    ],
+    "api": ["Webhooks", "dispatch()", "@VerifyWebhook()", "@IncomingWebhook()", "processInTransaction()", "WebhookEndpoints", "WebhookDeliveries", "WebhookWorker", "WebhooksModule", "PostgresWebhookStore"],
+    "pitfalls": [
+      "未以 rawBody: true 启动时验签会失败并返回 500",
+      "出站投递至少一次，接收方必须按 webhook-id 去重",
+      "生产未注册数据库 store 时启动会失败，除非允许内存存储"
+    ],
+    "enterprise": "对接支付、物流等第三方时统一用该包管理收发：出站走 outbox 保证与业务同事务，入站用原始体签名校验加事务内去重，并给伙伴提供投递日志与重放接口。",
+    "related": ["reliability/outbox", "reliability/idempotency", "data/drizzle", "http/performance"]
+  }
+]

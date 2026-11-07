@@ -1,0 +1,264 @@
+[
+  {
+    "id": "ai/models",
+    "titleZh": "AI 模型配置",
+    "summary": "每次模型调用都在超时、重试与回退模型策略下运行，这些设置来自调用、模型定义与模块 defaults 三级合并，并上报 token 用量与成本。模型可按名字注入以便自行调用 AI SDK；失败时依次重试与切换 fallback，全部失败抛 AiModelError；budget 限制单次调用的 tokens 与成本，onUsage 与 diagnostics channel 可用于监控用量、重试和回退。",
+    "sections": [
+      {
+        "heading": "模型设置与优先级",
+        "text": "模型可以只是 provider 返回的 LanguageModel，也可以是含 model、fallback、pricing、timeout、retry、resilience 与生成参数的定义对象。每个设置按调用、模型定义、模块 defaults 的顺序合并；fallback 与 pricing 只能设在模型或调用上。"
+      },
+      {
+        "heading": "重试、超时与回退",
+        "text": "每次尝试默认 60s 超时；重试默认 3 次，1s 起指数退避加抖动，provider 标记可重试的 408、409、429、5xx 与超时会重试，并遵守 retry-after。回退模型在重试耗尽后按顺序尝试，fallbackIf 可缩小触发范围；首个 chunk 或工具开始后结果已提交，不再重试或回退。"
+      },
+      {
+        "heading": "失败与错误类型",
+        "text": "所有尝试与所有回退模型都失败时抛 AiModelError，携带 attempts 列表与最后一个 cause。包里还有 AiOutputError、AiBudgetExceededError、AiConfigurationError 与 AiToolError，都继承 AiError，可按类型在异常过滤器中转成友好的 HTTP 响应。"
+      },
+      {
+        "heading": "用量、成本与预算",
+        "text": "每次成功模型调用触发 onUsage 事件，含 label、model、usage、cost、durationMs 与 finishReason，cost 依赖 pricing。budget 用 maxTokens 与 maxCost 限制单次调用，在每次模型调用前检查，超出抛 AiBudgetExceededError。"
+      }
+    ],
+    "keyPoints": [
+      "模型定义可带 fallback、pricing、timeout、retry、resilience 与生成参数",
+      "设置按调用、模型定义、模块 defaults 的顺序合并，调用级优先级最高",
+      "重试默认 3 次，408/409/429/5xx 与超时会重试，并遵守 retry-after",
+      "fallback 只在自身重试耗尽后按顺序尝试，fallbackIf 可缩小范围",
+      "全部失败抛 AiModelError，携带 attempts 列表与最后一个 cause",
+      "budget 在每次模型调用前检查，超出抛 AiBudgetExceededError",
+      "onUsage 在每次成功调用后触发，含 usage、cost、durationMs 等"
+    ],
+    "snippets": [
+      {
+        "title": "配置模型与默认策略",
+        "lang": "typescript",
+        "code": "import { anthropic } from '@ai-sdk/anthropic';\nimport { openai } from '@ai-sdk/openai';\nimport { Module } from '@nestjs/common';\nimport { AiModule } from '@nestjs/ai';\n\n@Module({\n  imports: [\n    AiModule.forRoot({\n      isGlobal: true,\n      models: {\n        default: {\n          model: anthropic('claude-opus-5-5'),\n          pricing: { input: 4, output: 20, cachedInput: 0.2 },\n          maxOutputTokens: 4_000,\n          fallback: 'backup',\n        },\n        fast: {\n          model: anthropic('claude-haiku-5-5'),\n          pricing: { input: 0.1, output: 0.5 },\n          timeout: '15s',\n        },\n        backup: openai('gpt-5'),\n      },\n      defaults: { timeout: '45s', maxOutputTokens: 1_000 },\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "调用级覆盖重试与回退",
+        "lang": "typescript",
+        "code": "const { text } = await this.ai.generateText({\n  model: 'fast',\n  prompt: email,\n  timeout: '10s',\n  retry: { attempts: 2, backoff: { delay: '500ms' } },\n  fallback: ['default', 'backup'],\n  fallbackIf: (error) =>\n    !APICallError.isInstance(error) || error.statusCode !== 400,\n  onUsage: (event) =>\n    this.metering.record(event.usage.totalTokens, event.cost),\n});"
+      }
+    ],
+    "api": [
+      "fallback",
+      "fallbackIf",
+      "timeout",
+      "retry",
+      "pricing",
+      "onUsage",
+      "budget",
+      "@InjectModel()",
+      "AiModelError",
+      "AiBudgetExceededError"
+    ],
+    "pitfalls": [
+      "只有调用自身的模型会跟随 fallback，回退模型自己的 fallback 不会采用",
+      "首个 chunk 或工具开始执行后结果已提交，不再超时重试或回退",
+      "未配置 pricing 的模型 cost 为 undefined，预算中按免费计算"
+    ],
+    "enterprise": "按模型分别配置 pricing 与超时，用 defaults 统一重试与预算上限；把 onUsage 接入计量或账单系统，用 diagnostics channel 记录重试与回退，便于发现供应商抖动。",
+    "related": [
+      "ai/overview",
+      "ai/tools",
+      "ai/agents",
+      "reliability/resilience"
+    ]
+  },
+  {
+    "id": "ai/tools",
+    "titleZh": "Agent 函数",
+    "summary": "agent function 是 provider 上打了 @AgentFunction() 的方法，模型会把它当工具调用：按 name 与 description 选择函数，按 inputSchema 的 .describe() 填写参数，调用会经过类与方法的守卫、拦截器、管道和异常过滤器。调用时在 tools 中列出可用函数，并用 caller 指明代理身份；方法第二个参数是 AgentFunctionContext，可拿到 request、signal、toolCallId 与 reportProgress。",
+    "sections": [
+      {
+        "heading": "定义工具函数",
+        "text": "@AgentFunction() 的选项都可选：name 默认取方法名，description 供模型选择，inputSchema 描述参数，scopes 限制调用者。类注册到 providers 即可，AiModule 会扫描所有模块，include 可限制范围；名称非法、重名或位于请求作用域 provider 上时启动失败。"
+      },
+      {
+        "heading": "给调用提供工具",
+        "text": "调用在 tools 中按名称或 provider 类列出可用 agent function，未列出的不会暴露给模型；caller 指定 request，或 user 与 scopes。模型调用函数后参数先按 schema 校验，再由 maxSteps（默认 10）限制模型调用次数，错误选项在发送前就被拒绝。"
+      },
+      {
+        "heading": "调用上下文与身份",
+        "text": "AgentFunctionContext 提供 name、request、user、scopes、toolCallId、messages、signal 与 reportProgress()。声明 scopes 的函数只对持有相应 scope 的 caller 运行，否则在守卫之前就被拒绝；没有 caller 的调用以匿名身份运行。"
+      },
+      {
+        "heading": "增强器与 MCP 双暴露",
+        "text": "agent function 的执行上下文类型是 'ai'，用 AiExecutionContext.create() 读取输入、上下文与请求。同一方法可同时加 @Tool() 与 @AgentFunction()，分别服务 MCP 客户端与应用内 agent；两种上下文类型不同，增强器用 context.getType() 区分。"
+      }
+    ],
+    "keyPoints": [
+      "@AgentFunction() 选项为 name、description、inputSchema",
+      "调用在 tools 中按名称或 provider 类列出可用函数，未列出则不可用",
+      "caller 指定 request 或 user/scopes，没有 caller 时以匿名身份运行",
+      "上下文含 request、signal、toolCallId 与 reportProgress()",
+      "声明 scopes 的函数只对持有相应 scope 的 caller 运行",
+      "执行上下文类型是 'ai'，用 AiExecutionContext.create() 读取调用",
+      "同一方法可同时加 @Tool() 与 @AgentFunction()，服务两类客户端"
+    ],
+    "snippets": [
+      {
+        "title": "定义 agent function",
+        "lang": "typescript",
+        "code": "import { Injectable, NotFoundException } from '@nestjs/common';\nimport { AgentFunction } from '@nestjs/ai';\nimport * as z from 'zod';\nimport { OrdersService } from './orders.service';\n\n@Injectable()\nexport class OrdersTools {\n  constructor(private readonly orders: OrdersService) {}\n\n  @AgentFunction({\n    name: 'find-order',\n    description: 'Find an order by its id, with its status',\n    inputSchema: z.object({\n      orderId: z.string().describe('The order id, such as ord_123'),\n    }),\n  })\n  async find({ orderId }: { orderId: string }) {\n    const order = await this.orders.findById(orderId);\n    if (!order) {\n      throw new NotFoundException(`There is no order ${orderId}`);\n    }\n    return { id: order.id, status: order.status, total: order.total };\n  }\n}"
+      },
+      {
+        "title": "调用时列出工具与 caller",
+        "lang": "typescript",
+        "code": "import { Body, Controller, Post, Req } from '@nestjs/common';\nimport { AiService } from '@nestjs/ai';\nimport type { Request } from 'express';\n\n@Controller('assistant')\nexport class AssistantController {\n  constructor(private readonly ai: AiService) {}\n\n  @Post('questions')\n  async ask(@Body() body: { question: string }, @Req() request: Request) {\n    const { text } = await this.ai.generateText({\n      instructions: 'Look an order up before you answer about it.',\n      prompt: body.question,\n      tools: ['find-order'],\n      caller: { request },\n    });\n    return { answer: text };\n  }\n}"
+      }
+    ],
+    "api": [
+      "@AgentFunction()",
+      "AgentFunctionContext",
+      "AiExecutionContext",
+      "caller",
+      "tools",
+      "scopes",
+      "inputSchema",
+      "AiTools",
+      "@Tool()"
+    ],
+    "pitfalls": [
+      "名称必须符合 provider 的命名规则，重名或请求作用域 provider 会启动失败",
+      "模型拿到的方法返回值按 JSON 处理，Date 变字符串、undefined 变 null",
+      "写全局增强器时应先判断 context.getType() 是否为 'http'"
+    ],
+    "enterprise": "把 agent function 当模型可见的 API 设计：描述写清何时使用、参数配 .describe()，写操作加守卫与作用域校验；与 MCP 共享同一方法时复用 schema 常量，避免两套定义漂移。",
+    "related": [
+      "ai/agents",
+      "ai/overview",
+      "mcp/primitives",
+      "ai/testing"
+    ]
+  },
+  {
+    "id": "ai/agents",
+    "titleZh": "Agent 运行机制",
+    "summary": "带工具的 AiService 调用会在进程内运行 agent 循环：模型调用工具、读取结果，再继续调用或回答，每次模型调用是一步，maxSteps 限制步数。页面覆盖会话（messages 与 responseMessages）、用 streamText() 与 pipeUIMessageStreamToResponse() 把答案流式推送到浏览器，以及基于 @nestjs/workflows 的持久化 agent 运行：可中断恢复、等待人工审批，并按 idempotencyKey 保证副作用只执行一次。",
+    "sections": [
+      {
+        "heading": "Agent 循环",
+        "text": "带 tools 的调用会反复执行模型调用、运行模型请求的工具、把结果发回模型，直到模型不再请求工具或达到 maxSteps。每步都有 text、toolCalls、toolResults、finishReason、usage、cost、model 与 attempts；工具时间不计入模型超时，已开始的步骤不会重试。"
+      },
+      {
+        "heading": "会话与流式输出",
+        "text": "messages 传入完整会话，responseMessages 是本次新增的助手与工具消息，可追加后继续对话。streamText() 立即返回流，pipeUIMessageStreamToResponse() 以 SSE 推送 UI message stream，支持 keepAlive、errorText，并在浏览器断开时中止模型与工具。"
+      },
+      {
+        "heading": "持久化 agent 运行",
+        "text": "@nestjs/ai/workflows 的 AiAgents.run() 把每次模型与工具调用变成 workflow step，运行可恢复。approve 中的函数等待人工，pendingApprovals()、approve()、reject() 管理审批；重启后只保留 user 与 scopes，副作用用 ctx.idempotencyKey 做幂等。"
+      }
+    ],
+    "keyPoints": [
+      "带 tools 的调用循环执行模型与工具，直到不再请求工具或达到 maxSteps",
+      "maxSteps 默认 10，用尽时 finishReason 为 'tool-calls'",
+      "messages 传完整会话，responseMessages 是本次新增消息，可追加继续",
+      "streamText() 返回流，pipeUIMessageStreamToResponse() 推送",
+      "流式调用支持 keepAlive、errorText，浏览器断开时中止模型与工具",
+      "AiAgents.run() 把 agent 循环变成 workflow step，可恢复并等待审批",
+      "agent function 至少执行一次，改数据的函数必须传递 ctx.idempotencyKey"
+    ],
+    "snippets": [
+      {
+        "title": "把答案流式推送到浏览器",
+        "lang": "typescript",
+        "code": "import { Body, Controller, Post, Req, Res } from '@nestjs/common';\nimport { AiService } from '@nestjs/ai';\nimport { convertToModelMessages, type UIMessage } from 'ai';\nimport type { Request, Response } from 'express';\n\n@Controller('assistant')\nexport class AssistantController {\n  constructor(private readonly ai: AiService) {}\n\n  @Post('chat')\n  async chat(\n    @Body() { messages }: { messages: UIMessage[] },\n    @Req() request: Request,\n    @Res() response: Response,\n  ) {\n    const answer = this.ai.streamText({\n      instructions: 'Look an order up before you answer about it.',\n      messages: await convertToModelMessages(messages),\n      tools: ['find-order', 'change-address'],\n      caller: { request },\n    });\n    await answer.pipeUIMessageStreamToResponse(response, {\n      keepAlive: '10s',\n    });\n  }\n}"
+      },
+      {
+        "title": "持久化 agent 工作流",
+        "lang": "typescript",
+        "code": "import { AiAgents } from '@nestjs/ai/workflows';\nimport { Workflow, type WorkflowContext } from '@nestjs/workflows';\n\nexport interface RefundRequestInput {\n  email: string;\n  customerId: string;\n}\n\n@Workflow('refund-request')\nexport class RefundRequest {\n  constructor(private readonly agents: AiAgents) {}\n\n  run(ctx: WorkflowContext, input: RefundRequestInput) {\n    return this.agents.run(ctx, {\n      label: 'refund-request',\n      instructions: 'Look the order up, and refund it when it is justified.',\n      prompt: input.email,\n      tools: ['find-order', 'refund'],\n      approve: ['refund'],\n      caller: { user: { id: input.customerId } },\n    });\n  }\n}"
+      }
+    ],
+    "api": [
+      "streamText()",
+      "pipeUIMessageStreamToResponse()",
+      "maxSteps",
+      "toolChoice",
+      "messages",
+      "responseMessages",
+      "AiAgents",
+      "@nestjs/ai/workflows",
+      "approve",
+      "idempotencyKey"
+    ],
+    "pitfalls": [
+      "maxSteps 用尽时 generateObject() 拿不到对象会抛 AiOutputError",
+      "持久化运行的 caller 只保留 user 与 scopes，重启后没有 request 可读",
+      "approve 中的调用会等到有人处理或超时，等待期间 workflow 实例挂起"
+    ],
+    "enterprise": "面向用户的对话用 streamText() 直接推给前端；涉及退款、下单等写操作放进持久化 agent 运行，强制人工审批并用 idempotencyKey 打通支付等下游幂等。",
+    "related": [
+      "ai/tools",
+      "ai/testing",
+      "reliability/workflows",
+      "ai/overview"
+    ]
+  },
+  {
+    "id": "ai/testing",
+    "titleZh": "AI 测试",
+    "summary": "测试调用模型的代码不需要真实 provider：@nestjs/ai/testing 的 FakeModel 是一个真正的 LanguageModel，按顺序返回预设答案并记录每次调用，只去掉网络，因此模块设置、重试、超时、回退、schema、agent function 及其增强器、流式都照常运行。可用 providerError() 模拟 HTTP 错误、overrideModels() 替换端到端测试中的模型、callTool() 单独测试 agent function。",
+    "sections": [
+      {
+        "heading": "FakeModel 与答案",
+        "text": "FakeModel 按顺序消费答案：字符串直接作答复，{ toolCalls } 触发工具调用，{ object } 给 generateObject() 读取，Error 模拟失败，函数可按调用动态返回。答案还可带 usage、finishReason、delay、chunkDelay、streamError；reply() 可追加答案。"
+      },
+      {
+        "heading": "测试服务与端到端覆盖",
+        "text": "在测试模块的 AiModule.forRoot() 里用 fake 模型替换真实模型，即可测试服务；端到端则用 overrideModels() 按名字替换应用模型并保留 pricing、fallback、timeout 等定义。测试重试时把 backoff 设为 0、超时调短，避免等待。"
+      },
+      {
+        "heading": "工具、流与持久化运行",
+        "text": "callTool() 不经模型，按真实链路校验 schema、scopes、守卫、拦截器、管道与过滤器。流式测试解析 SSE 的 text-delta 与 tool-output-available 块；持久化运行用 ManualWorkflowClock 与 worker.drain()，让测试决定运行推进的时机。"
+      }
+    ],
+    "keyPoints": [
+      "FakeModel 是真实 LanguageModel，按顺序消费答案并记录调用",
+      "答案可为字符串、{ toolCalls }、{ object }、Error 或函数",
+      "providerError(status) 模拟 provider 的 HTTP 错误，多数可重试",
+      "overrideModels() 按名字替换模型并保留 pricing、fallback 等定义",
+      "callTool() 不经模型，验证 schema、scopes 与全部增强器",
+      "流式测试中 fake 模型按词切片，响应包含 text-delta 等 SSE 块",
+      "持久化运行用 ManualWorkflowClock 与 worker.drain() 控制推进"
+    ],
+    "snippets": [
+      {
+        "title": "构造 FakeModel 答案序列",
+        "lang": "typescript",
+        "code": "import { FakeModel, providerError } from '@nestjs/ai/testing';\n\nconst model = new FakeModel([\n  // 1. 纯文本答复\n  'Your order has shipped.',\n  // 2. 先调用工具，再根据工具结果作答\n  { toolCalls: [{ name: 'find-order', input: { orderId: 'ord_123' } }] },\n  (call) => `The order is ${JSON.stringify(call.toolResults[0].output)}`,\n  // 3. generateObject() 读取的对象\n  { object: { category: 'shipping', orderId: 'ord_123', urgent: false } },\n  // 4. 模拟供应商过载\n  providerError(529),\n]);"
+      },
+      {
+        "title": "在端到端测试中替换模型",
+        "lang": "typescript",
+        "code": "import { Test } from '@nestjs/testing';\nimport { FakeModel, overrideModels } from '@nestjs/ai/testing';\nimport { AppModule } from '../src/app.module';\n\nconst model = new FakeModel();\nconst moduleRef = await overrideModels(\n  Test.createTestingModule({ imports: [AppModule] }),\n  { default: model },\n).compile();\nconst app = await moduleRef.createNestApplication().init();\n\nmodel.reply(\n  { toolCalls: [{ name: 'find-order', input: { orderId: 'ord_123' } }] },\n  (call) => `Your order has ${call.toolResults[0].output.status}.`,\n);\nexpect(model.lastCall?.tools).toEqual(['find-order']);"
+      }
+    ],
+    "api": [
+      "FakeModel",
+      "providerError()",
+      "overrideModels()",
+      "callTool()",
+      "reply()",
+      "calls",
+      "lastCall",
+      "ManualWorkflowClock",
+      "WorkflowWorker.drain()"
+    ],
+    "pitfalls": [
+      "FakeModel 没有答案时会报错，测试前要为每一步准备好答案",
+      "测试重试时把 backoff 设为 0、超时调短，避免测试变慢",
+      "直接调用方法会跳过 schema、scopes 与增强器，需要覆盖时用 callTool()"
+    ],
+    "enterprise": "在 CI 中默认使用 FakeModel，禁止单测访问真实模型供应商；把 prompt 与 schema 的回归用 fake 答案固定下来，真实模型只在少量契约测试里验证。",
+    "related": [
+      "ai/tools",
+      "ai/agents",
+      "ai/models",
+      "fundamentals/testing"
+    ]
+  }
+]

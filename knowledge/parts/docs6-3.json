@@ -1,0 +1,187 @@
+[
+  {
+    "id": "migration-guide",
+    "titleZh": "迁移指南",
+    "summary": "本页指导从 NestJS 11 升级到 12。v12 的核心变化是 ESM 包、新的 CLI 默认值、基于 Standard Schema 的校验与序列化一等支持，以及原生可观测性支持。升级可以用 nest upgrade 一次完成大部分机械改动；应用本身是否改为 ESM 是可选项，CommonJS 应用可通过 require(esm) 继续运行在 v12 上，无需强制重写。",
+    "sections": [
+      {
+        "heading": "升级步骤与 Node 要求",
+        "text": "先全局升级 @nestjs/cli 与 @nestjs/schematics，在项目根目录执行 nest upgrade，它会把所有 @nestjs/* 包升到 v12 主版本、升 TypeScript 6，并处理 webpack 选项、GraphQL playground、NATS 包替换与 @nestjs/config 校验选项等机械迁移，最后给出报告。运行应用需 Node v20.19+ 或 v22.12+；用 CLI 生成代码需 v22.22.3+、v24.15+ 或 v26+。"
+      },
+      {
+        "heading": "ESM 与工具链",
+        "text": "所有 Nest 核心包改为 ESM，但现代 Node 的 require(esm) 让多数 CommonJS 应用可直接升级。nest new 现在可选择 CommonJS 或 ESM：ESM 项目默认 Vitest，全部新项目默认 oxlint。若继续用 Jest，需 Node v24.9+ 才能加载 ESM-only 包，否则报 ERR_REQUIRE_ASYNC_MODULE；@nestjs/testing 仍与测试运行器无关。"
+      },
+      {
+        "heading": "主要破坏性变更",
+        "text": "路由参数装饰器新增 Standard Schema 的 schema 选项，配合 StandardSchemaValidationPipe 使用，并提供 StandardSchemaSerializerInterceptor；GraphiQL 成为默认 GraphQL IDE；GraphQL 订阅移除 subscriptions-transport-ws，改用 graphql-ws；NATS 升级到 v3 需替换为 @nats-io/transport-node；生命周期钩子按组件层级调用；@Optional() 不再被子类重声明的构造函数继承。"
+      },
+      {
+        "heading": "Terminus 与其他变化",
+        "text": "Terminus 移除旧的 HealthIndicator 与 HealthCheckError，自定义健康指标改用 HealthIndicatorService，并用 check().down()/up() 或 attempt() 报告状态。CLI 方面 webpack 标志被标记废弃、monorepo 默认 Rspack，新增 nest deploy 与若干 build/start 选项。此外还有路由冲突诊断、机器可读 errorCode、结构化日志参数与原生 @nestjs/observe 支持等变化。"
+      }
+    ],
+    "keyPoints": [
+      "先升级全局 @nestjs/cli 与 @nestjs/schematics，再运行 nest upgrade 完成机械迁移。",
+      "运行 Nest 12 需 Node v20.19+/v22.12+；CLI 生成代码需 v22.22.3+/v24.15+/v26+。",
+      "Nest 核心包改为 ESM；CommonJS 应用靠 require(esm) 继续运行，迁移 ESM 是可选项。",
+      "路由装饰器支持 Standard Schema 的 schema 选项与 StandardSchemaValidationPipe。",
+      "Terminus 移除旧健康检查 API，自定义指标改用 HealthIndicatorService。",
+      "生命周期钩子按组件层级调用，@Optional() 不再被重声明构造函数的子类继承。",
+      "NATS v3 需把 nats 包替换为 @nats-io/transport-node，并用 msg.json() 读取载荷。"
+    ],
+    "snippets": [
+      {
+        "title": "Standard Schema 校验",
+        "lang": "typescript",
+        "code": "@Post()\ncreate(@Body({ schema: createUserSchema }) body: CreateUserDto) {\n  return this.usersService.create(body);\n}\n\n@Get(':id')\nfindOne(\n  @Param('id', { schema: z.coerce.number().int().positive() }) id: number,\n) {\n  return this.usersService.findOne(id);\n}\n\n// 在 bootstrap 中注册内置管道\napp.useGlobalPipes(new StandardSchemaValidationPipe());"
+      },
+      {
+        "title": "迁移 Terminus 健康指标",
+        "lang": "typescript",
+        "code": "@Injectable()\nexport class DogHealthIndicator {\n  constructor(\n    private readonly dogService: DogService,\n    private readonly healthIndicatorService: HealthIndicatorService,\n  ) {}\n\n  async isHealthy(key: string) {\n    const indicator = this.healthIndicatorService.check(key);\n    const badboys = await this.dogService.getBadboys();\n\n    if (badboys.length > 0) {\n      return indicator.down({ badboys: badboys.length });\n    }\n\n    return indicator.up();\n  }\n}"
+      }
+    ],
+    "api": [
+      "nest upgrade",
+      "StandardSchemaValidationPipe",
+      "StandardSchemaSerializerInterceptor",
+      "@nestjs/schematics",
+      "HealthIndicatorService",
+      "require(esm)",
+      "schema",
+      "errorCode"
+    ],
+    "pitfalls": [
+      "只升级 @nestjs/core 而不同步其他 @nestjs/* 包，会因主版本不一致出现难以定位的问题。",
+      "Jest 在 Node 低于 v24.9 时无法加载 ESM-only 包，测试报 ERR_REQUIRE_ASYNC_MODULE。",
+      "子类重声明构造函数时忘记重新标注 @Optional()，会抛 UnknownDependenciesException。"
+    ],
+    "enterprise": "先在独立分支跑 nest upgrade --dry-run 查看改动，再在 CI 固定 Node LTS 与 TypeScript 6；升级前用测试覆盖依赖注入顺序与 Terminus 健康检查，opt-in 选项逐步验证。",
+    "related": [
+      "observability/overview",
+      "reliability/terminus",
+      "application/logger",
+      "cli/usages"
+    ]
+  },
+  {
+    "id": "appendix/enterprise",
+    "titleZh": "官方 NestJS 咨询",
+    "summary": "本页介绍 NestJS 官方咨询与企业支持服务：由 NestJS 核心团队直接提供技术指导、架构评审、代码审查、团队赋能与培训，帮助团队更成功、更高效地使用 NestJS 及现代技术栈。服务面向希望获得一手专家支持、在敏感设计与安全性能问题上获得建议，或需要核心团队成员直接参与项目的团队；联系方式为 support@nestjs.com。",
+    "sections": [
+      {
+        "heading": "官方支持内容",
+        "text": "官方支持让客户直接从 NestJS 核心团队获得专家帮助，内容包括技术指导与架构评审、团队成员指导（mentoring）、最佳实践建议、设计决策咨询、安全与性能问题处理，以及深入的代码审查。核心团队成员会与你的团队在多个层面协作，共同应对最具挑战性的问题。"
+      },
+      {
+        "heading": "团队扩充与最佳实践",
+        "text": "Team Augmentation 让 NestJS 核心团队成员日常与你的团队一起工作，被视为团队一员共同把项目推进到下一阶段。NestJS Best Practices 通过高频代码审查、PR 审查与审计，在早期发现潜在缺陷，确保代码质量、性能与安全，并帮助团队落实最佳实践。"
+      },
+      {
+        "heading": "沟通渠道与培训",
+        "text": "First-hand access 提供与核心团队直接沟通的渠道，加快问题讨论与解决速度，提升团队交付效率。NestJS Workshops and Trainings 提供从启动培训到进阶课程的完整培训，包括现场工作坊与高强度远程课程，帮助团队快速进入 NestJS 生态。"
+      },
+      {
+        "heading": "联系方式",
+        "text": "页面提供 CONTACT US 入口，可通过邮件 support@nestjs.com 联系官方团队，讨论项目与团队需求，让官方团队帮助你的团队在 NestJS 上取得成功。"
+      }
+    ],
+    "keyPoints": [
+      "官方支持由 NestJS 核心团队直接提供，而非第三方外包。",
+      "服务包含技术指导、架构评审、mentoring、最佳实践与设计决策咨询。",
+      "覆盖安全与性能问题处理，以及深入的代码审查（PR review 与 audit）。",
+      "Team Augmentation 让核心团队成员日常参与你的项目交付。",
+      "提供现场工作坊与高强度远程培训，覆盖入门与进阶内容。",
+      "直接沟通渠道加快问题解决速度，提升团队交付效率。",
+      "通过 support@nestjs.com 或页面 CONTACT US 入口联系官方。"
+    ],
+    "snippets": [],
+    "api": [
+      "support@nestjs.com"
+    ],
+    "pitfalls": [
+      "把官方咨询当作低价外包渠道；它更适合架构决策、评审与团队赋能。",
+      "期望文档或社区问答替代核心团队的一手评审，复杂架构问题仍建议走官方支持。"
+    ],
+    "enterprise": "当核心系统进入架构演进、性能与安全治理阶段，或团队刚引入 NestJS 需要快速建立规范时，可引入官方咨询做架构评审与培训；把咨询与内部技术债治理、代码评审流程结合，效果更好。",
+    "related": [
+      "support",
+      "deployment"
+    ]
+  },
+  {
+    "id": "support",
+    "titleZh": "支持我们",
+    "summary": "Nest 是 MIT 许可的开源项目，持续开发依赖社区支持，是无数个深夜、业余时间与忙碌周末的成果。本页说明如何帮助 Nest：它背后没有持续为其开发付费的大公司，作者完全依赖社区的善意，因此提供 OpenCollective 赞助、PayPal 一次性捐赠与邮件联系等支持渠道；若你喜爱 Nest 或公司在使用它，可赞助其开发。",
+    "sections": [
+      {
+        "heading": "项目现状",
+        "text": "Nest 是 MIT 许可的开源项目，其持续开发依靠社区支持。框架是长期熬夜、下班后与周末工作的成果，并非由大公司持续支付开发工时，因此项目的维护与演进节奏与社区赞助直接相关。"
+      },
+      {
+        "heading": "如何帮助",
+        "text": "作者完全依赖社区的善意，希望把框架做得更好并专注于让编码更愉悦的解决方案，为此运营了几个支持平台：在 OpenCollective 上成为 backer 或 sponsor、通过 PayPal 进行一次性捐赠，或直接发邮件至 mail@kamilmysliwiec.com 联系。"
+      },
+      {
+        "heading": "赞助的意义",
+        "text": "如果喜爱 Nest 或所在企业使用它，可考虑赞助其开发，确保产品依赖的项目被积极维护与改进。支持也会帮助作者为整个 Nest 社区创作更多内容，例如教学博客与视频，从而反哺整个生态。"
+      }
+    ],
+    "keyPoints": [
+      "Nest 是 MIT 许可的开源项目，持续开发依赖社区支持。",
+      "项目没有大公司持续支付开发工时，作者完全依赖社区。",
+      "可在 OpenCollective 上成为 backer 或 sponsor。",
+      "可通过 PayPal 进行一次性捐赠。",
+      "可直接发邮件至 mail@kamilmysliwiec.com 联系作者。",
+      "赞助有助于项目被积极维护并产出更多社区内容。"
+    ],
+    "snippets": [],
+    "api": [
+      "OpenCollective",
+      "PayPal"
+    ],
+    "pitfalls": [
+      "认为使用 Nest 就自动获得官方保障；开源项目需要社区赞助维持维护节奏。",
+      "把赞助当作购买商业支持；商业咨询与支持应走官方咨询渠道。"
+    ],
+    "enterprise": "企业若在生产中深度依赖 Nest，可评估 OpenCollective 赞助并写入开源合规预算；同时关注依赖版本与安全公告，把赞助与内部升级计划结合，而不是只依赖社区免费维护。",
+    "related": [
+      "appendix/enterprise",
+      "discover/companies"
+    ]
+  },
+  {
+    "id": "discover/companies",
+    "titleZh": "谁在使用 Nest",
+    "summary": "Nest 帮助各种规模的公司构建并扩展产品。本页是“生产中使用 Nest 的公司”清单入口：如果你所在公司使用 Nest 并希望被列出，可在 GitHub issue「Who is using Nest in production?」中留言，官方会乐意添加公司 logo。页面列出据官方所知在生产环境基于 Nest 构建项目的公司，用于展示框架的采用广度。",
+    "sections": [
+      {
+        "heading": "页面用途",
+        "text": "该页用于展示在生产中使用 Nest 的公司，帮助评估框架的采用广度与规模可信度。Nest 可支撑不同规模的公司构建产品并横向扩展，清单中的公司都在 Nest 之上构建了生产项目。"
+      },
+      {
+        "heading": "如何加入",
+        "text": "若你使用 Nest 并希望公司被列入，可在 nestjs/nest 仓库的 Who is using Nest in production? GitHub issue（#1006）中留言，官方表示乐意添加 logo。清单由官方据其所知维护，具体 logo 与公司信息以官网页面为准。"
+      }
+    ],
+    "keyPoints": [
+      "页面列出在生产环境基于 Nest 构建项目的公司清单。",
+      "Nest 帮助不同规模的公司构建并扩展产品。",
+      "希望被列出的团队可在 GitHub issue #1006 中留言。",
+      "官方据其所知维护该清单，并乐意添加公司 logo。",
+      "页面本身不提供查询 API，仅作为生态采用度的参考清单。"
+    ],
+    "snippets": [],
+    "api": [],
+    "pitfalls": [
+      "把清单当作官方背书或性能基准；它只说明这些公司在生产中使用 Nest。",
+      "申请收录应到 Who is using Nest in production? issue（#1006），而不是新开 issue。"
+    ],
+    "enterprise": "在技术选型评估中可把该清单作为生态采用度的参考，但更应结合团队技能、社区活跃度与长期维护计划判断；若公司已规模化使用 Nest，可留言加入清单以提升招聘与技术品牌曝光。",
+    "related": [
+      "support",
+      "introduction"
+    ]
+  }
+]
