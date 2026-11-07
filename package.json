@@ -17,11 +17,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_GITHUB_USER/nest-assistant.git"
+    "url": "git+https://github.com/lniev/nestjs-assistant.git"
   },
-  "homepage": "https://github.com/YOUR_GITHUB_USER/nest-assistant#readme",
+  "homepage": "https://github.com/lniev/nestjs-assistant#readme",
   "bugs": {
-    "url": "https://github.com/YOUR_GITHUB_USER/nest-assistant/issues"
+    "url": "https://github.com/lniev/nestjs-assistant/issues"
   },
   "engines": {
     "node": ">=20.0.0",

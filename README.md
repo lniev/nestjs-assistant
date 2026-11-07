@@ -7,12 +7,12 @@
 从 GitHub 安装（推荐固定 tag）：
 
 ```
-github:YOUR_GITHUB_USER/nest-assistant#v1.0.0
+github:lniev/nestjs-assistant#v1.0.0
 ```
 
 - **Web UI**：左侧栏「插件」→「安装第三方插件」→ 粘贴上面的地址 → 安装；
 - **让 AI 装**：让会话执行 `plugin_manager` 的 `install_bundle`，`target` 填上面的地址；
-- **CLI**：`dsh plugin --profile <profile> add github:YOUR_GITHUB_USER/nest-assistant#v1.0.0`。
+- **CLI**：`dsh plugin --profile <profile> add github:lniev/nestjs-assistant#v1.0.0`。
 
 安装后打开侧边栏「NestJS 助手」。升级方式：先卸载再用新 tag 安装。完整发布/安装/排错说明见
 [PUBLISHING.md](PUBLISHING.md)。
