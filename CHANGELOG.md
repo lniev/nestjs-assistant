@@ -1,0 +1,18 @@
+# Changelog
+
+## v1.0.0 — 2026-11-07
+
+首个可发布版本：
+
+- **知识全貌**：NestJS 官方文档 165 页中文总结（核心机制 / 要点 / 代码片段 / API / 常见坑 / 企业建议），支持搜索与跳转官方页面。
+- **企业地图**：分层领域、L1–L4 成熟度、最佳实践、上线检查清单、反模式、关键 API、推荐项目结构。
+- **学习路线**：7 阶段 30 个练习，含目标、要点、交付物、验收标准、时长与官方文档引用；支持勾选进度。
+- **操练场**：
+  - 31 个代码模块（学习路线 30 个练习 + 自由沙盒），每个都是**真实 Nest CLI 脚手架形态**的默认可运行工程（`src/main.ts`、package.json、nest-cli.json、tsconfig.build.json、README 等）；
+  - 真实虚拟 NestJS 运行时：TypeScript 编译 → 启动 Nest 应用 → 请求代理 → 路由发现；
+  - 缩进式文件树、手动新建文件/文件夹、代码高亮编辑器；
+  - 代码版本保存/命名、切换、重置、删除，切换时自动停止运行；
+  - 学习路线一键跳到对应练习模块；
+  - 运行结果面板可折叠，AI 教练对话完整渲染 Markdown（GFM 表格 + One Dark 代码高亮）。
+- **Host 能力**：`nest_docs` 工具（search/read/list/map/route）、同源 HTTP API、系统提示片段。
+- 发布配套：`scripts/verify-modules.mjs`（31 个模块真实编译+启动验证）、`scripts/smoke.mjs`（103 项）、Host 测试与 GitHub Actions CI。

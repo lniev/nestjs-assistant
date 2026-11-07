@@ -42,6 +42,7 @@
     "locale/*.json",
     "package.json",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "PUBLISHING.md",
     "MODULES-SPEC.md",
