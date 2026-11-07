@@ -7,17 +7,30 @@
 从 GitHub 安装（推荐固定 tag）：
 
 ```
-github:lniev/nestjs-assistant#v1.0.0
+github:lniev/nestjs-assistant#v1.0.1
 ```
 
 - **Web UI**：左侧栏「插件」→「安装第三方插件」→ 粘贴上面的地址 → 安装；
 - **让 AI 装**：让会话执行 `plugin_manager` 的 `install_bundle`，`target` 填上面的地址；
-- **CLI**：`dsh plugin --profile <profile> add github:lniev/nestjs-assistant#v1.0.0`。
+- **CLI**：`dsh plugin --profile <profile> add github:lniev/nestjs-assistant#v1.0.1`。
 
 安装后打开侧边栏「NestJS 助手」。升级方式：先卸载再用新 tag 安装。完整发布/安装/排错说明见
 [PUBLISHING.md](PUBLISHING.md)。
 
 > 插件以你的本机权限运行，请只安装可信来源。
+
+## 界面截图
+
+| 知识全貌 | 企业地图 |
+| --- | --- |
+| ![知识全貌](https://raw.githubusercontent.com/lniev/nestjs-assistant/main/docs/screenshots/01-knowledge.png) | ![企业地图](https://raw.githubusercontent.com/lniev/nestjs-assistant/main/docs/screenshots/02-enterprise-map.png) |
+| **知识全貌**：165 页官方文档逐页中文总结，目录树 + 搜索 + 一键跳原文 | **企业地图**：12 个能力域、L1–L4 成熟度、实践 / 检查清单 / 反模式 |
+
+| 学习路线 | 操练场 |
+| --- | --- |
+| ![学习路线](https://raw.githubusercontent.com/lniev/nestjs-assistant/main/docs/screenshots/03-learning-route.png) | ![操练场](https://raw.githubusercontent.com/lniev/nestjs-assistant/main/docs/screenshots/04-playground.png) |
+| **学习路线**：7 阶段 30 个练习，可勾选进度、一键去操练场 | **操练场**：代码模块 + 版本保存 + 真实 NestJS 运行时 + AI 教练 |
+
 
 把 **NestJS 官方文档全量（165 页）** 逐页总结进插件内部，并提供：
 
@@ -35,7 +48,7 @@ github:lniev/nestjs-assistant#v1.0.0
 - **切换模块**：右侧「代码模块」栏选择模块 → 工作区文件整体替换为该模块的代码，正在运行的应用先被停止。
 - **代码版本**：编辑后点「保存并命名」→ 当前工作区保存为该模块的一份代码版本（同一模块可多份），
   版本下拉可随时切回；「重置为默认代码」恢复该模块的默认工程；「删除当前版本」删除正在使用的那份（先切回默认）。
-- **学习路线联动**：学习路线每个练习卡片上有「去操练场练这个」，点击直接跳到操练场并选中对应模块。
+- **学习路线联动**：学习路线每个练习卡片上有「去操练场练一练」，点击直接跳到操练场并选中对应模块。
 - **持久化**：`playground-state.json`（当前模块/版本/脏标记）、`playground-saves/<moduleId>/<snapshotId>/`（保存的版本）。
 - `node scripts/upgrade-module-scaffold.mjs` 可把模块默认工程重新升级为真实脚手架形态（幂等，执行后跑 `node scripts/verify-modules.mjs`）。
   这两者是运行时生成物，删除后会回到默认状态（自由沙盒）。

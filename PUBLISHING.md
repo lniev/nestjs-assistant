@@ -48,8 +48,8 @@ git remote add origin https://github.com/lniev/nestjs-assistant.git
 git push -u origin main
 
 # 建议打 tag，用户安装时可以固定版本
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 `.gitignore` 已排除 `node_modules/`、`playground/`、`playground-saves/`、`playground-state.json`
@@ -62,7 +62,7 @@ git push origin v1.0.0
 三种方式任选其一，安装 spec（来源地址）是同一个：
 
 ```
-github:lniev/nestjs-assistant#v1.0.0
+github:lniev/nestjs-assistant#v1.0.1
 ```
 
 也可以省略 tag 用默认分支：
@@ -75,7 +75,7 @@ github:lniev/nestjs-assistant
 
 1. 打开 DeepSeek Harness 左侧栏的 **插件** 页面；
 2. 点 **安装第三方插件**；
-3. 在「包名或地址」里粘贴 `github:lniev/nestjs-assistant#v1.0.0`；
+3. 在「包名或地址」里粘贴 `github:lniev/nestjs-assistant#v1.0.1`；
 4. 确认包名与介绍后点 **安装**；
 5. 安装完成后到侧边栏打开 **NestJS 助手**，首次进入操练场会生成运行时目录。
 
@@ -86,14 +86,14 @@ github:lniev/nestjs-assistant
 
 在支持 `plugin_manager` 工具的会话里直接说：
 
-> 用 plugin_manager 安装 `github:lniev/nestjs-assistant#v1.0.0`
+> 用 plugin_manager 安装 `github:lniev/nestjs-assistant#v1.0.1`
 
 （该工具通常需要 `danger-full-access` 权限或用户批准。）
 
 ### 方式 C：CLI
 
 ```bash
-dsh plugin --profile desktop add github:lniev/nestjs-assistant#v1.0.0
+dsh plugin --profile desktop add github:lniev/nestjs-assistant#v1.0.1
 ```
 
 `desktop` 是桌面版 profile 名；Web 版按实际 profile 名替换。CLI 版同样会把插件装进该
