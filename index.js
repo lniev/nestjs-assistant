@@ -230,6 +230,17 @@ function formatRoute(route) {
 			for (const point of points) lines.push('- ' + String(point));
 			lines.push('交付物：' + String(item.deliverable === undefined ? '' : item.deliverable));
 			lines.push('验收标准：' + String(item.accept === undefined ? '' : item.accept));
+			const lesson = item.lesson !== null && typeof item.lesson === 'object' ? item.lesson : null;
+			if (lesson !== null) {
+				if (typeof lesson.intro === 'string' && lesson.intro !== '') lines.push('导读（大白话）：' + lesson.intro);
+				if (typeof lesson.bridge === 'string' && lesson.bridge !== '') lines.push('衔接上一章：' + lesson.bridge);
+				const steps = Array.isArray(lesson.steps) ? lesson.steps : [];
+				for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
+					const step = steps[stepIndex];
+					lines.push(String(stepIndex + 1) + '. ' + String(step.title === undefined ? '' : step.title) + '：' + String(step.body === undefined ? '' : step.body));
+				}
+				if (typeof lesson.pitfall === 'string' && lesson.pitfall !== '') lines.push('常见坑：' + lesson.pitfall);
+			}
 			const pages = Array.isArray(item.pageIds) ? item.pageIds : [];
 			if (pages.length > 0) lines.push('相关页面：' + pages.map((id) => '`' + String(id) + '`').join('、'));
 			lines.push('');
@@ -319,7 +330,9 @@ The complete NestJS official documentation (every page under docs.nestjs.com) is
 - \`action: "map"\` — the enterprise development knowledge map;
 - \`action: "route"\` — the staged learning route.
 
-Prefer the knowledge base for framework usage; only use the web for breaking changes newer than the embedded docs. When the user is working in the playground, guide them to edit files, click 运行 and send HTTP requests in the panel.`;
+Prefer the knowledge base for framework usage; only use the web for breaking changes newer than the embedded docs. When the user is working in the playground, guide them to edit files, click 运行 and send HTTP requests in the panel.
+
+When teaching NestJS topics, stay concrete and step by step: start from what the user has already built (their current learning-route item or the file they are editing), explain in plain language before jargon, advance one verifiable step at a time (edit → 运行 → send request → read result) and say what they should see. Do not adopt a persona or role-play.`;
 
 /** Build the model-facing tool definition (plain object: no first-party imports). */
 function defineNestDocsTool(getKnowledge) {

@@ -19,6 +19,10 @@ const NEST_I18N_LEARNING_ROUTE = {
 		'route.accept': '验收标准',
 		'route.level': '成熟度',
 		'route.pages': '相关文档',
+		'route.lessonToggle': '分步讲解 · {n} 步',
+		'route.lessonToggleOpen': '收起讲解',
+		'route.lessonBridge': '接上一章',
+		'route.lessonPitfall': '常见坑',
 		'route.askPractice': '去操练场练一练',
 		'route.askLearn': '问 AI 讲解',
 		'route.openPlaygroundTitle': '在操练场打开对应模块，直接动手实现',
@@ -52,6 +56,10 @@ const NEST_I18N_LEARNING_ROUTE = {
 		'route.accept': 'Acceptance',
 		'route.level': 'Level',
 		'route.pages': 'Related docs',
+		'route.lessonToggle': 'Walkthrough · {n} steps',
+		'route.lessonToggleOpen': 'Hide walkthrough',
+		'route.lessonBridge': 'From the last chapter',
+		'route.lessonPitfall': 'Pitfall',
 		'route.askPractice': 'Practice in playground',
 		'route.askLearn': 'Ask AI to explain',
 		'route.openPlaygroundTitle': 'Open the matching module in the playground and build it',
@@ -83,6 +91,15 @@ function NestRouteItem(props) {
 	const onOpenPlayground = props.onOpenPlayground;
 	const points = Array.isArray(item.points) ? item.points : NEST_EMPTY;
 	const pageIds = Array.isArray(item.pageIds) ? item.pageIds : NEST_EMPTY;
+	// Optional plain-language walkthrough: intro is always visible, the bridge to
+	// the previous chapter + numbered steps + pitfall expand on demand. Items
+	// without lesson data render exactly as before (no toggle).
+	const lesson = item.lesson !== null && typeof item.lesson === 'object' ? item.lesson : null;
+	const lessonSteps = lesson !== null && Array.isArray(lesson.steps) ? lesson.steps : NEST_EMPTY;
+	const hasLesson = lesson !== null && (typeof lesson.intro === 'string' || typeof lesson.bridge === 'string' || lessonSteps.length > 0);
+	const lessonState = React.useState(false);
+	const lessonOpen = lessonState[0];
+	const setLessonOpen = lessonState[1];
 	// The practice-in-playground jump is optional: tests and embeds that don't
 	// wire the prop must keep rendering exactly as before (button hidden).
 	const canOpenPlayground = typeof onOpenPlayground === 'function';
@@ -104,6 +121,41 @@ function NestRouteItem(props) {
 				typeof item.level === 'string' ? h('span', { className: 'ner-level' }, item.level) : null,
 				typeof item.minutes === 'number' ? h('span', { className: 'ne-chip ne-chipSoft' }, t('route.minutes', { n: item.minutes })) : null)
 		),
+		hasLesson
+			? h('div', { className: 'ner-lesson' },
+				typeof lesson.intro === 'string'
+					? h('p', { className: 'ner-lessonIntro' }, lesson.intro)
+					: null,
+				h('button', {
+					className: 'ner-lessonToggle',
+					type: 'button',
+					'aria-expanded': lessonOpen ? 'true' : 'false',
+					onClick: () => setLessonOpen(!lessonOpen)
+				},
+					NestGlyph({ name: lessonOpen ? 'chevronUp' : 'chevronDown', size: 11 }),
+					h('span', null, lessonOpen ? t('route.lessonToggleOpen') : t('route.lessonToggle', { n: lessonSteps.length }))
+				),
+				lessonOpen
+					? h('div', { className: 'ner-lessonBody' },
+						typeof lesson.bridge === 'string' && lesson.bridge !== ''
+							? h('p', { className: 'ner-lessonBridge' },
+								h('span', { className: 'ner-lessonTag' }, t('route.lessonBridge')),
+								h('span', null, lesson.bridge))
+							: null,
+						lessonSteps.length > 0
+							? h('ol', { className: 'ner-lessonSteps' }, lessonSteps.map((step, index) => h('li', { key: 'step' + String(index) },
+								typeof step.title === 'string' ? h('span', { className: 'ner-lessonStepTitle' }, step.title) : null,
+								typeof step.body === 'string' ? h('span', { className: 'ner-lessonStepBody' }, step.body) : null)))
+							: null,
+						typeof lesson.pitfall === 'string' && lesson.pitfall !== ''
+							? h('p', { className: 'ner-lessonPitfall' },
+								h('span', { className: 'ner-lessonTag ner-lessonTagWarn' }, t('route.lessonPitfall')),
+								h('span', null, lesson.pitfall))
+							: null
+					)
+					: null
+			)
+			: null,
 		points.length > 0
 			? h('ul', { className: 'ner-points' }, points.map((point, index) => h('li', { key: 'p' + String(index) }, point)))
 			: null,

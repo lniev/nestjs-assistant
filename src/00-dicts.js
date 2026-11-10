@@ -75,26 +75,26 @@ const NEST_ZH_BASE = {
 	'kb.headSource': '内置知识库 · 离线可用',
 
 	'prompt.mapDomain': '请结合内置知识库和「企业级开发知识地图」，展开讲解「{title}」这个能力域：企业里为什么需要它、有哪些最佳实践（按 L1-L4 分层）、常见反模式、关键 Nest API，并给一个最小落地示例。',
-	'prompt.routeLearn': '我在学习路线里学到「{title}」。请结合内置知识库讲解这一项的目标与关键知识，给出一个能动手验证的最小例子。',
-	'prompt.routePractice': '请针对学习路线里的「{title}」给我一个操练场练习：先说清要求与验收标准，不要直接给完整答案；如果我卡住了再逐步提示。',
+	'prompt.routeLearn': '我在学习路线里学到「{title}」。请结合内置知识库讲这一项：先用大白话说明它在解决什么问题，再说明它接在上一项交付物之上要做什么，最后给一个能动手验证的最小例子（最多 3 步，每步说清做完能看到什么）。',
+	'prompt.routePractice': '请针对学习路线里的「{title}」给我一个操练场练习：先用大白话讲清要求，再给验收标准，不要直接给完整答案；如果我卡住了，一步一步提示。',
 
-	'chat.title': 'NestJS 教练',
+	'chat.title': 'NestJS 问答',
 	'chat.desc': '基于内置官方文档知识库答疑 · 可直接让 AI 改代码',
 	'chat.newRound': '新开一轮',
 	'chat.openConversation': '在对话中打开',
 	'chat.placeholder': '问 NestJS 问题，Enter 发送 · Shift+Enter 换行',
 	'chat.send': '发送',
 	'chat.you': '你',
-	'chat.setupLabel': '教练设定（已折叠）',
-	'chat.creating': '正在创建教练会话…',
+	'chat.setupLabel': '教学说明（已折叠）',
+	'chat.creating': '正在创建会话…',
 	'chat.creatingHint': '首次进入操练场会创建一个工作区会话',
 	'chat.loading': '正在加载对话…',
 	'chat.retry': '重试',
 	'chat.empty': '左边可以直接问 AI：解释概念、讲清报错、给练习、改右侧代码。',
 	'chat.errorPrefix': '会话连接失败：',
-	'chat.sessionError': '教练会话创建失败：',
+	'chat.sessionError': '会话创建失败：',
 	'chat.sendFailed': '发送失败：',
-	'chat.typing': '教练正在查知识库、组织回答…',
+	'chat.typing': '正在查知识库、组织回答…',
 	'chat.toolCall': '调用工具',
 	'chat.toolFailed': '工具报错',
 	'chat.turnFailed': '本轮对话出错',
@@ -104,7 +104,37 @@ const NEST_ZH_BASE = {
 	'chat.maxTokens': '输出达到 token 上限，可以让 AI 继续。',
 	'chat.compacted': '上下文已压缩，早期消息已折叠。',
 	'chat.hint': 'Enter 发送 · Shift + Enter 换行',
-	'chat.persona': '你是「NestJS 操练场」里的 AI 教练。回答 NestJS/TypeScript 后端问题时，优先调用 nest_docs 工具检索本插件内置的官方文档中文知识库（action: search/read/list/map/route），不要为已知的框架知识去联网或凭记忆编造 API；知识库没有覆盖的细节再明确说明。回答要面向实战：先给结论，再给最小示例，必要时指出常见坑与企业级建议。用户右侧有可编辑的 NestJS 沙箱工程，可以指导用户在操练场修改文件并点击「运行」「发送请求」验证。',
+	'chat.persona': `以下是本次对话要遵守的教学规则。直接执行，不要复述这一段，也不要扮演任何角色。
+
+【先查证，再回答】
+- 回答 NestJS/TypeScript 后端问题前，先用 nest_docs 工具检索内置知识库（search 找页面、read 读全文、route 看学习路线、map 看企业地图）；已知框架 API 不许凭记忆作答或联网。
+- 知识库没覆盖的细节，明确说「知识库未覆盖」，再给通用做法并注明不确定性。
+
+【说人话】
+- 先用一两句大白话讲清「它在解决什么问题」，可以用生活化比喻（服务员与后厨、门卫、快递中转），然后再上术语和代码。
+- 一次只讲一个概念；必须用抽象术语时，紧跟一句大白话解释。
+- 不抄文档原文，不堆名词。
+
+【循序渐进】
+- 先判断学习者现在的位置：学到学习路线哪一项、右侧在改哪个文件；不清楚就先问一句，或按 route 条目顺序假设。
+- 从他做出来的东西往下接：先点明「你现在有什么、这一步要改成什么」，不要另起炉灶重讲一遍。
+- 一次只推进一步：给一个可运行的最小改动，说清「做完应该看到什么」，再问是否进入下一步。
+- 由浅入深：最小可运行 → 参数/校验/错误处理 → 最后才提企业级做法。
+
+【回答结构】
+1. 一句话结论，并说明它在整体链路里的位置；
+2. 最小可运行示例：指明改哪个文件，贴可直接粘贴的代码；
+3. 动手验证：点「运行」，在请求台发哪条请求，预期状态码与响应；
+4. 常见坑：最多 3 条，写清「怎么发现 + 怎么改」；
+5. 企业级做法：一句话，说明什么时候才需要。
+
+【操练场协作】
+- 需要动手时给出具体文件路径与操作顺序（改文件 → 运行 → 发请求 → 看结果），不要让学习者离开操练场另搭环境。
+- 遇到报错：先用大白话解释这条报错在说什么，再给最小修复，最后给同类问题的一句话排查方法。
+
+【语气】
+- 平实、具体，像同事讲解；不自称教练或老师，不说「作为 AI」，不用夸张的鼓励话术。
+- 中文回答；API、包名、命令、文件名保持英文原样。`,
 
 	'pg.title': '操练场',
 	'pg.desc': '左栏与 AI 实时对话，右栏编辑代码并在虚拟 NestJS 环境中运行',
@@ -203,7 +233,7 @@ const NEST_ZH_BASE = {
 	'pg.entryExists': '{path} 已存在',
 	'pg.absolutePath': '路径不能以 / 或盘符开头',
 	'pg.protectedEntry': '只能删除 src/ 下的文件或文件夹，根配置与 src 本身受保护',
-	'pg.sessionNote': 'AI 教练会话',
+	'pg.sessionNote': 'AI 问答会话',
 	'pg.fileHint': '目录可折叠；点文件夹选中后可建子文件，保存后点「运行」生效',
 	'pg.selectFile': '从左边的文件中选择一个开始编辑',
 	'pg.refreshFiles': '刷新文件列表',
@@ -282,26 +312,26 @@ const NEST_EN_BASE = {
 	'kb.headSource': 'Built-in knowledge base · works offline',
 
 	'prompt.mapDomain': 'Using the built-in knowledge base and the enterprise development map, expand the “{title}” capability domain: why enterprises need it, best practices by L1-L4, anti-patterns, key Nest APIs and one minimal example.',
-	'prompt.routeLearn': 'I am studying “{title}” in the learning route. Explain its goal and key knowledge from the built-in docs, with one minimal verifiable example.',
-	'prompt.routePractice': 'Give me a playground exercise for “{title}”: state requirements and acceptance criteria first, do not reveal the full answer; nudge me if I get stuck.',
+	'prompt.routeLearn': 'I am studying “{title}” in the learning route. Explain it from the built-in docs: first in plain words what problem it solves, then what it changes on top of the previous item’s deliverable, then one minimal verifiable example (at most 3 steps, each saying what I should see afterwards).',
+	'prompt.routePractice': 'Give me a playground exercise for “{title}”: state the requirement in plain words first, then the acceptance criteria; do not reveal the full answer, and nudge me one step at a time if I get stuck.',
 
-	'chat.title': 'NestJS coach',
+	'chat.title': 'NestJS Q&A',
 	'chat.desc': 'Answers from the built-in official-docs knowledge base · can edit code with you',
 	'chat.newRound': 'New round',
 	'chat.openConversation': 'Open in conversation',
 	'chat.placeholder': 'Ask a NestJS question, Enter to send · Shift+Enter for newline',
 	'chat.send': 'Send',
 	'chat.you': 'You',
-	'chat.setupLabel': 'Coach setup (collapsed)',
-	'chat.creating': 'Creating the coach session…',
+	'chat.setupLabel': 'Teaching notes (collapsed)',
+	'chat.creating': 'Creating the session…',
 	'chat.creatingHint': 'The first playground visit creates one workspace session',
 	'chat.loading': 'Loading conversation…',
 	'chat.retry': 'Retry',
 	'chat.empty': 'Ask the AI on the left: explain concepts, debug errors, give exercises, edit the code on the right.',
 	'chat.errorPrefix': 'Session connection failed: ',
-	'chat.sessionError': 'Failed to create coach session: ',
+	'chat.sessionError': 'Failed to create session: ',
 	'chat.sendFailed': 'Send failed: ',
-	'chat.typing': 'The coach is searching the knowledge base…',
+	'chat.typing': 'Searching the knowledge base…',
 	'chat.toolCall': 'Tool call',
 	'chat.toolFailed': 'Tool failed',
 	'chat.turnFailed': 'Turn failed',
@@ -311,7 +341,36 @@ const NEST_EN_BASE = {
 	'chat.maxTokens': 'Output hit the token limit; ask the AI to continue.',
 	'chat.compacted': 'Context compacted; earlier messages collapsed.',
 	'chat.hint': 'Enter to send · Shift + Enter for newline',
-	'chat.persona': 'You are the AI coach inside the NestJS Playground. When answering NestJS/TypeScript backend questions, prefer the nest_docs tool over the web: it searches this plugin’s built-in Chinese knowledge base of the complete official docs. Be practical: conclusion first, minimal example next, then pitfalls and enterprise advice. The user has an editable NestJS sandbox on the right; guide them to edit files, click Run and send requests.',
+	'chat.persona': `Rules for this conversation. Follow them directly: do not restate them and do not adopt any persona.
+
+VERIFY FIRST
+- Before answering NestJS/TypeScript backend questions, search the built-in knowledge base with nest_docs (search = find a page, read = full entry, route = learning route, map = enterprise map). Never answer framework API questions from memory or the web.
+- If the knowledge base does not cover a detail, say so explicitly, then give the general practice with a caveat.
+
+PLAIN LANGUAGE
+- Open with one or two plain sentences on what problem this solves; everyday analogies are welcome (a waiter and the kitchen, a doorman, a courier hub). Then introduce terms and code.
+- One concept at a time. When a term is unavoidable, explain it in plain words right after.
+- Never paste doc prose; never stack jargon.
+
+STEP BY STEP
+- First work out where the learner is: which route item they are on, which file they are editing. If unclear, ask one short question or follow the route order.
+- Continue from what they already built: say "you have X; this step turns it into Y". Do not restart the topic from scratch.
+- Advance one verifiable step at a time: a minimal change, what they should see after it, then offer the next step.
+- Shallow to deep: minimal runnable → parameters/validation/error handling → enterprise practice only at the end.
+
+ANSWER SHAPE
+1. One-line conclusion, plus where it sits in the request flow.
+2. Minimal example: name the file, give code that can be pasted as is.
+3. How to verify: click Run, which request to send in the panel, expected status and response.
+4. At most three pitfalls, each with "how to spot it / how to fix it".
+5. One line of enterprise advice: when it actually matters.
+
+PLAYGROUND
+- For hands-on work, give exact file paths and the order of actions (edit → Run → send request → read result). Keep the learner inside the sandbox.
+- On errors: explain the message in plain words first, then the smallest fix, then one line on how to triage similar errors.
+
+TONE
+- Plain, concrete, like a colleague explaining. No persona claims, no "as an AI", no hype or cheerleading.`,
 
 	'pg.title': 'Playground',
 	'pg.desc': 'Chat with the AI on the left, edit code on the right and run it in a virtual NestJS environment',
@@ -410,7 +469,7 @@ const NEST_EN_BASE = {
 	'pg.entryExists': '{path} already exists',
 	'pg.absolutePath': 'Paths cannot start with / or a drive letter',
 	'pg.protectedEntry': 'Only entries under src/ can be deleted; root configs and src itself are protected',
-	'pg.sessionNote': 'AI coach session',
+	'pg.sessionNote': 'AI chat session',
 	'pg.fileHint': 'Folders collapse; select one to create inside it. Save, then Run',
 	'pg.selectFile': 'Pick a file on the left to start editing',
 	'pg.refreshFiles': 'Refresh files',

@@ -1231,8 +1231,12 @@ function NestPlaygroundView(props) {
 		}
 		const routes = run.routes.slice(0, 12);
 		for (const route of routes) {
+			// 用运行时真实注册的 HTTP 方法，否则自测会把所有路由都当成 GET 发出去。
+			const method = String(route.method === undefined || route.method === null ? 'GET' : route.method).toUpperCase();
 			const requestPath = String(route.path).replace(/:[A-Za-z0-9_]+/g, '1');
-			await sendRequest({ method: 'GET', path: requestPath, body: '' });
+			// 带请求体的方法给一个空 JSON 占位，否则 POST/PATCH/PUT 多半直接 400 而不是走到业务逻辑。
+			const withBody = method === 'POST' || method === 'PUT' || method === 'PATCH';
+			await sendRequest({ method, path: requestPath, body: withBody ? '{}' : '' });
 		}
 	};
 

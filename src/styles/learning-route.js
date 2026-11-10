@@ -140,6 +140,39 @@ const NEST_CSS_LEARNING_ROUTE = `
 .ner-fact { margin: 0; display: flex; gap: 8px; font-size: 11px; line-height: 1.55; }
 .ner-factLabel { flex: none; width: 54px; font-weight: 650; color: var(--dsw-alias-brand-primary); }
 .ner-factText { color: var(--dsw-alias-label-secondary); }
+
+/* ---- plain-language lesson (intro always on, steps on demand) ---- */
+.ner-lesson {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 9px 11px 10px; border-radius: 9px;
+  border: 1px dashed color-mix(in srgb, var(--dsw-alias-brand-primary) 34%, var(--dsw-alias-border-l1));
+  background: linear-gradient(150deg, color-mix(in srgb, var(--dsw-alias-brand-primary) 6%, transparent), transparent 70%);
+}
+.ner-lessonIntro { margin: 0; font-size: 11.5px; line-height: 1.68; color: var(--dsw-alias-label-primary); }
+.ner-lessonToggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 7px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 34%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-bg-base) 82%, transparent);
+  color: var(--dsw-alias-brand-primary); font-size: 10.5px; font-weight: 650;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.ner-lessonToggle:hover { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, var(--dsw-alias-bg-base)); }
+.ner-lessonToggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.ner-lessonBody { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.ner-lessonTag { flex: none; font-weight: 700; color: var(--dsw-alias-brand-primary); margin-right: 6px; }
+.ner-lessonTagWarn { color: var(--dsw-alias-state-warn-primary); }
+.ner-lessonBridge { margin: 0; font-size: 11.5px; line-height: 1.66; color: var(--dsw-alias-label-secondary); }
+.ner-lessonSteps { margin: 0; padding-left: 17px; display: flex; flex-direction: column; gap: 6px; }
+.ner-lessonSteps li { font-size: 11.5px; line-height: 1.64; color: var(--dsw-alias-label-secondary); }
+.ner-lessonSteps li::marker { color: var(--dsw-alias-brand-primary); font-weight: 700; }
+.ner-lessonStepTitle { font-weight: 650; color: var(--dsw-alias-label-primary); margin-right: 6px; }
+.ner-lessonStepBody { color: var(--dsw-alias-label-secondary); }
+.ner-lessonPitfall {
+  margin: 0; font-size: 11px; line-height: 1.6; color: var(--dsw-alias-label-secondary);
+  padding: 7px 9px; border-radius: 7px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 7%, transparent);
+}
 .ner-itemFoot { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 2px; }
 .ner-itemFoot .ne-pillRow { gap: 4px; }
 .ner-itemActions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }

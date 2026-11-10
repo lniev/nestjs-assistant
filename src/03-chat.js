@@ -1,6 +1,6 @@
 // #region sessions
 // The playground chat pane is an ordinary DSH session: it is created in the
-// chosen workspace, renamed, seeded with a coach setup message, and then read
+// chosen workspace, renamed, seeded with a teaching-instructions message, and then read
 // through the Gateway Remote API (`remote.session.follow` + `observeState`).
 // Sending a message is a normal `remote.session.prompt`, so the session stays
 // visible in the sidebar, replayable and forkable like any other conversation.
@@ -8,10 +8,13 @@
 /** Captured Client root context; chat code resolves services through it. */
 let nestClientContext = null;
 
-/** Prefix of the seeded persona message; the pane folds it into a setup row. */
+/** Prefix of the seeded instruction message; the pane folds it into a setup row. */
 const NEST_SETUP_MARK = '〔NEST·设定〕';
 
-/** Initial page budget for the opening snapshot of the coach session. */
+/** Initial page budget for the opening snapshot of the chat session. */
+
+/** Store key for managed-session ids; bump the suffix whenever the seeded instructions change. */
+const NEST_SESSION_STORE = 'sessions.v2';
 const NEST_FOLLOW_WINDOW = { maxMessages: 140, turnWindow: { minMessages: 90, minTurns: 8 } };
 
 /** Map of `workspaceId:coach` -> in-flight ensure promise. */
@@ -19,7 +22,7 @@ const nestSessionJobs = new Map();
 
 /** Read a persisted managed-session id for one workspace. */
 function nestReadSessionId(workspaceId) {
-	const store = nestReadStore('sessions', null);
+	const store = nestReadStore(NEST_SESSION_STORE, null);
 	if (store === null || typeof store !== 'object') return null;
 	const value = store[workspaceId];
 	return typeof value === 'string' && value !== '' ? value : null;
@@ -27,19 +30,19 @@ function nestReadSessionId(workspaceId) {
 
 /** Persist a managed-session id for one workspace. */
 function nestWriteSessionId(workspaceId, sessionId) {
-	const store = nestReadStore('sessions', null);
+	const store = nestReadStore(NEST_SESSION_STORE, null);
 	const next = store !== null && typeof store === 'object' ? Object.assign({}, store) : {};
 	next[workspaceId] = sessionId;
-	nestWriteStore('sessions', next);
+	nestWriteStore(NEST_SESSION_STORE, next);
 }
 
 /** Forget the managed-session id for one workspace (used by "new round"). */
 function nestForgetSessionId(workspaceId) {
-	const store = nestReadStore('sessions', null);
+	const store = nestReadStore(NEST_SESSION_STORE, null);
 	if (store === null || typeof store !== 'object') return;
 	const next = Object.assign({}, store);
 	delete next[workspaceId];
-	nestWriteStore('sessions', next);
+	nestWriteStore(NEST_SESSION_STORE, next);
 	nestSessionJobs.delete(workspaceId + ':coach');
 }
 
@@ -52,7 +55,7 @@ function nestUnwrapRemote(result, action) {
 	throw new Error(action + ': ' + (code !== '' ? code + ': ' : '') + message);
 }
 
-/** Compose the seeded coach persona prompt (stable prefix for folding). */
+/** Compose the seeded teaching-instructions prompt (stable prefix for folding). */
 function nestPersonaPrompt(t) {
 	return NEST_SETUP_MARK + '\n' + t('chat.persona');
 }
