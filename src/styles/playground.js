@@ -67,7 +67,6 @@ const NEST_CSS_PLAYGROUND = `
 .nep-fileActions { margin-left: auto; display: flex; gap: 0; }
 .nep-fileList { flex: 1; min-height: 0; padding: 6px 6px 10px; display: flex; flex-direction: column; gap: 1px; }
 .nep-filesEmpty { font-size: 11px; padding: 8px; }
-.nep-filesHint { margin: 0; padding: 7px 10px 8px; font-size: 10px; color: var(--dsw-alias-label-secondary); border-top: 1px solid var(--dsw-alias-border-l1); line-height: 1.5; }
 /* Sandbox tree: indented rows (inline paddingLeft carries the depth). */
 .nep-fileRow, .nep-treeRow {
   display: flex; align-items: center; gap: 5px; width: 100%; min-height: 25px;

@@ -184,7 +184,6 @@ const NEST_ZH_BASE = {
 	'pg.expandOutput': '展开运行结果',
 	'pg.logs': '运行日志',
 	'pg.routes': '已注册路由',
-	'pg.noRoutes': '应用启动后这里会显示路由',
 	'pg.request': '发起请求',
 	'pg.method': '方法',
 	'pg.path': '路径',
@@ -242,7 +241,6 @@ const NEST_ZH_BASE = {
 	'pg.absolutePath': '路径不能以 / 或盘符开头',
 	'pg.protectedEntry': '只能删除 src/ 下的文件或文件夹，根配置与 src 本身受保护',
 	'pg.sessionNote': 'AI 问答会话',
-	'pg.fileHint': '目录可折叠；点文件夹选中后可建子文件，保存后点「运行」生效',
 	'pg.selectFile': '从左边的文件中选择一个开始编辑',
 	'pg.refreshFiles': '刷新文件列表',
 	'pg.logsHint': '编译输出、Nest 启动日志与 stderr 会显示在这里',
@@ -420,7 +418,6 @@ TONE
 	'pg.expandOutput': 'Expand output',
 	'pg.logs': 'Logs',
 	'pg.routes': 'Registered routes',
-	'pg.noRoutes': 'Routes appear here after the app starts',
 	'pg.request': 'Send a request',
 	'pg.method': 'Method',
 	'pg.path': 'Path',
@@ -478,7 +475,6 @@ TONE
 	'pg.absolutePath': 'Paths cannot start with / or a drive letter',
 	'pg.protectedEntry': 'Only entries under src/ can be deleted; root configs and src itself are protected',
 	'pg.sessionNote': 'AI chat session',
-	'pg.fileHint': 'Folders collapse; select one to create inside it. Save, then Run',
 	'pg.selectFile': 'Pick a file on the left to start editing',
 	'pg.refreshFiles': 'Refresh files',
 	'pg.logsHint': 'Compiler output, Nest startup logs and stderr appear here',
@@ -4710,8 +4706,7 @@ function NestPlaygroundView(props) {
 							onToggleDir: toggleDir,
 							onSelectDir: selectDir,
 							onSelectFile: selectFile
-						}),
-						h('p', { className: 'nep-filesHint' }, t('pg.fileHint'))
+						})
 					),
 					h('div', { className: 'nep-editorPane' },
 						h('div', { className: 'nep-editorHead' },
@@ -4737,7 +4732,7 @@ function NestPlaygroundView(props) {
 								onClick: () => setRequestForm(nestPgRequestFor(route)),
 								title: t('pg.request')
 							}, h('span', { className: 'nep-method' }, route.method), h('span', null, route.path))))
-							: h('span', { className: 'ne-muted' }, t('pg.noRoutes')),
+							: null,
 						h('div', { className: 'nep-outputActions' },
 							h('button', { className: 'ne-btn ne-btnSmall', type: 'button', disabled: !running, onClick: autoTest }, t('pg.autoTest')),
 							h('button', { className: 'ne-btn ne-btnSmall ne-btnGhost', type: 'button', onClick: () => setResults(NEST_EMPTY), disabled: results.length === 0 }, t('pg.clearResults')),
@@ -5507,7 +5502,6 @@ const NEST_CSS_PLAYGROUND = `
 .nep-fileActions { margin-left: auto; display: flex; gap: 0; }
 .nep-fileList { flex: 1; min-height: 0; padding: 6px 6px 10px; display: flex; flex-direction: column; gap: 1px; }
 .nep-filesEmpty { font-size: 11px; padding: 8px; }
-.nep-filesHint { margin: 0; padding: 7px 10px 8px; font-size: 10px; color: var(--dsw-alias-label-secondary); border-top: 1px solid var(--dsw-alias-border-l1); line-height: 1.5; }
 /* Sandbox tree: indented rows (inline paddingLeft carries the depth). */
 .nep-fileRow, .nep-treeRow {
   display: flex; align-items: center; gap: 5px; width: 100%; min-height: 25px;

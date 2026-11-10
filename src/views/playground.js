@@ -1354,8 +1354,7 @@ function NestPlaygroundView(props) {
 							onToggleDir: toggleDir,
 							onSelectDir: selectDir,
 							onSelectFile: selectFile
-						}),
-						h('p', { className: 'nep-filesHint' }, t('pg.fileHint'))
+						})
 					),
 					h('div', { className: 'nep-editorPane' },
 						h('div', { className: 'nep-editorHead' },
@@ -1381,7 +1380,7 @@ function NestPlaygroundView(props) {
 								onClick: () => setRequestForm(nestPgRequestFor(route)),
 								title: t('pg.request')
 							}, h('span', { className: 'nep-method' }, route.method), h('span', null, route.path))))
-							: h('span', { className: 'ne-muted' }, t('pg.noRoutes')),
+							: null,
 						h('div', { className: 'nep-outputActions' },
 							h('button', { className: 'ne-btn ne-btnSmall', type: 'button', disabled: !running, onClick: autoTest }, t('pg.autoTest')),
 							h('button', { className: 'ne-btn ne-btnSmall ne-btnGhost', type: 'button', onClick: () => setResults(NEST_EMPTY), disabled: results.length === 0 }, t('pg.clearResults')),
