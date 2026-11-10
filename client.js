@@ -5438,8 +5438,8 @@ const NEST_CSS_LEARNING_ROUTE = `
 // console on the right. Colors come only from host theme tokens.
 
 const NEST_CSS_PLAYGROUND = `
-.nep-page { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; background: var(--dsw-alias-bg-base); }
-.nep-split { flex: 1; min-height: 0; display: flex; }
+.nep-page { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; background: var(--dsw-alias-bg-base); container-type: inline-size; container-name: nep-page; }
+.nep-split { flex: 1; min-height: 0; display: flex; min-width: 0; }
 .nep-left {
   width: 38%; min-width: 300px; max-width: 540px;
   border-right: 1px solid var(--dsw-alias-border-l1);
@@ -5447,7 +5447,7 @@ const NEST_CSS_PLAYGROUND = `
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 18%, transparent);
 }
 .nep-left > * { flex: 1; min-width: 0; }
-.nep-right { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.nep-right { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
 /* ---- stage toolbar ---- */
 .nep-toolbar {
@@ -5491,7 +5491,7 @@ const NEST_CSS_PLAYGROUND = `
 .nep-modSummary { flex: 1; min-width: 0; font-size: 10.5px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- files + editor ---- */
-.nep-main { flex: 1; min-height: 0; display: flex; }
+.nep-main { flex: 1; min-height: 0; min-width: 0; display: flex; }
 .nep-files {
   width: 212px; flex: none; border-right: 1px solid var(--dsw-alias-border-l1);
   display: flex; flex-direction: column; min-height: 0;
@@ -5702,16 +5702,21 @@ const NEST_CSS_PLAYGROUND = `
 .nep-resultBody { margin: 0; padding: 8px 10px; max-height: 190px; overflow: auto; font-size: 10.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .nep-resultError { margin: 0; padding: 8px 10px; font-size: 11px; color: var(--dsw-alias-state-error-primary); }
 
-@media (max-width: 1120px) {
+/* Responsive layout is measured against the playground container, not the
+   browser viewport: the panel is usually much narrower than the window, so
+   viewport media queries would never fire and the right pane got clipped. */
+@container nep-page (max-width: 1120px) {
   .nep-left { width: 34%; max-width: 440px; }
   .nep-files { width: 186px; }
   .nep-toolbarActions .ne-btn span { display: none; }
   .nep-modSelect { max-width: 200px; }
 }
-@media (max-width: 980px) {
-  .nep-split { flex-direction: column; }
-  .nep-left { width: 100%; max-width: none; flex: 0 0 42%; min-height: 230px; height: auto; border-right: none; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-  .nep-right { flex: 1; }
+@container nep-page (max-width: 980px) {
+  /* Stacked: chat on top, sandbox below; the split scrolls instead of
+     clipping either pane when the panel is both narrow and short. */
+  .nep-split { flex-direction: column; overflow-y: auto; }
+  .nep-left { width: 100%; max-width: none; min-width: 0; flex: 0 0 auto; height: 220px; min-height: 0; border-right: none; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+  .nep-right { flex: 1 0 auto; min-width: 0; min-height: 400px; }
   .nep-files { width: 172px; }
   .nep-output { height: 46%; max-height: 56%; }
   .nep-modRow { gap: 8px; }
@@ -5720,7 +5725,7 @@ const NEST_CSS_PLAYGROUND = `
   .nep-modActions { margin-left: 0; }
   .nep-modMeta { flex-wrap: wrap; }
 }
-@media (max-width: 680px) {
+@container nep-page (max-width: 680px) {
   .nep-files { display: none; }
   .nep-toolbar { flex-wrap: wrap; }
   .nep-toolbarText { flex: 1 1 100%; }
