@@ -1,6 +1,6 @@
 {
   "name": "@local/nest-assistant",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "NestJS 助手：内置 165 页官方文档中文知识库 + 企业级开发地图 + 学习路线 + 可运行真实 Nest 工程的操练场（31 个练习模块、代码版本保存、虚拟 NestJS 运行时、AI 教练）。",

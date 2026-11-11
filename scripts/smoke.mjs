@@ -598,6 +598,14 @@ if (factoryResult !== null) {
 		check('markdown renderer exposed', false);
 	}
 
+	// Saved-version flow: the editor must be persisted BEFORE the module-busy
+	// guard flips on, otherwise saveFile() silently refuses the write.
+	const playgroundViewSource = fs.readFileSync(path.join(root, 'src', 'views', 'playground.js'), 'utf8');
+	const snapshotStart = playgroundViewSource.indexOf('const performSnapshotSave');
+	const saveCall = snapshotStart >= 0 ? playgroundViewSource.indexOf('await saveFile()', snapshotStart) : -1;
+	const busyCall = snapshotStart >= 0 ? playgroundViewSource.indexOf('beginModuleOperation();', snapshotStart) : -1;
+	check('saved-version flow saves the editor before marking the module busy', saveCall > 0 && busyCall > 0 && saveCall < busyCall);
+
 	// Chat transcript: duplicated deliveries / live drafts must not duplicate rows.
 	if (typeof exposed.nestFoldEntries === 'function' && typeof exposed.nestAppendEntry === 'function') {
 		const ev = (seq, type, data) => ({ event: { seq, type, time: seq, data } });

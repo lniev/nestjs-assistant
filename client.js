@@ -223,6 +223,7 @@ const NEST_ZH_BASE = {
 	'pg.snapshotCancel': '取消',
 	'pg.snapshotHint': 'Enter 保存 · Esc 取消',
 	'pg.snapshotNameRequired': '请先输入版本名',
+	'pg.operationBusy': '正在切换模块/版本，请稍候再试',
 	'pg.resetToDefault': '重置为默认代码',
 	'pg.resetModuleConfirm': '重置会把当前模块恢复成默认代码，未保存的修改会丢失。确定继续？',
 	'pg.resetModuleDone': '已恢复默认代码',
@@ -457,6 +458,7 @@ TONE
 	'pg.snapshotCancel': 'Cancel',
 	'pg.snapshotHint': 'Enter to save · Esc to cancel',
 	'pg.snapshotNameRequired': 'Enter a version name first',
+	'pg.operationBusy': 'A module or version switch is in progress. Please try again in a moment.',
 	'pg.resetToDefault': 'Reset to default code',
 	'pg.resetModuleConfirm': 'Reset restores this module’s default code; unsaved edits are lost. Continue?',
 	'pg.resetModuleDone': 'Restored the default code',
@@ -4398,7 +4400,10 @@ function NestPlaygroundView(props) {
 	 * does nothing on click.
 	 */
 	const beginSnapshotSave = () => {
-		if (moduleBusyRef.current) return;
+		if (moduleBusyRef.current) {
+			showToast('warn', t('pg.operationBusy'));
+			return;
+		}
 		const active = modulesState.active;
 		if (active === null) return;
 		const current = nestPgFindModule(modulesState.modules, active.moduleId);
@@ -4413,12 +4418,15 @@ function NestPlaygroundView(props) {
 
 	/** Capture the workspace as a named version; returns true on success. */
 	const performSnapshotSave = async (name) => {
+		/* Persist the editor BEFORE entering the module-busy state: saveFile()
+		   intentionally refuses to write while a module operation is running,
+		   so saving first and then switching to "busy" keeps both guarantees. */
+		if (dirty && activePath !== null) {
+			const saved = await saveFile();
+			if (!saved) return false;
+		}
 		beginModuleOperation();
 		try {
-			if (dirty && activePath !== null) {
-				const saved = await saveFile();
-				if (!saved) return false;
-			}
 			/* The Host stops the running app before capturing the snapshot (§7). */
 			clearClientRuntime();
 			await nestFetchJson('/playground/snapshot', { method: 'POST', body: JSON.stringify({ name }) });
@@ -4436,7 +4444,11 @@ function NestPlaygroundView(props) {
 
 	const submitSnapshotSave = async (event) => {
 		if (event !== undefined && typeof event.preventDefault === 'function') event.preventDefault();
-		if (snapshotForm === null || moduleBusyRef.current) return;
+		if (snapshotForm === null || snapshotForm.busy === true) return;
+		if (moduleBusyRef.current) {
+			showToast('warn', t('pg.operationBusy'));
+			return;
+		}
 		const name = String(snapshotForm.value === undefined || snapshotForm.value === null ? '' : snapshotForm.value).trim();
 		if (name === '') {
 			showToast('warn', t('pg.snapshotNameRequired'));
